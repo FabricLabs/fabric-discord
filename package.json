@@ -1,0 +1,28 @@
+{
+  "name": "@fabric/discord",
+  "version": "0.1.0-dev",
+  "description": "Discord connectivity for Fabric agents.",
+  "main": "services/discord.js",
+  "scripts": {
+    "test": "mocha tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martindale/fabric-service-discord.git"
+  },
+  "keywords": [
+    "fabric",
+    "bitcoin",
+    "discord"
+  ],
+  "author": "Fabric Labs",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/martindale/fabric-service-discord/issues"
+  },
+  "homepage": "https://github.com/martindale/fabric-service-discord#readme",
+  "dependencies": {
+    "@fabric/core": "martindale/fabric#lightning",
+    "lodash.merge": "^4.6.2"
+  }
+}
