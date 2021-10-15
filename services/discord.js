@@ -76,8 +76,13 @@ class Discord extends Service {
     res.send('ok');
   }
 
-  async _listChannels () {
-    return [];
+  async _sendToChannel(channelID, msg) {
+    const channel = await this.client.channels.fetch(channelID);
+    await channel.send(msg);
+  }
+
+  _listChannels () {
+    return this.client.channels.cache.keys();
   }
 
   generateApplicationLink () {
