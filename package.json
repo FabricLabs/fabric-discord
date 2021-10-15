@@ -22,7 +22,8 @@
   },
   "homepage": "https://github.com/martindale/fabric-service-discord#readme",
   "dependencies": {
-    "@fabric/core": "martindale/fabric#lightning",
+    "@fabric/core": "martindale/fabric#message-relay",
+    "discord.js": "^12.5.3",
     "lodash.merge": "^4.6.2"
   }
 }
