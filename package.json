@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/martindale/fabric-service-discord.git"
+    "url": "git+https://github.com/FabricLabs/fabric-service-discord.git"
   },
   "keywords": [
     "fabric",
@@ -18,11 +18,11 @@
   "author": "Fabric Labs",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/martindale/fabric-service-discord/issues"
+    "url": "https://github.com/FabricLabs/fabric-service-discord/issues"
   },
-  "homepage": "https://github.com/martindale/fabric-service-discord#readme",
+  "homepage": "https://github.com/FabricLabs/fabric-service-discord#readme",
   "dependencies": {
-    "@fabric/core": "martindale/fabric#message-relay",
+    "@fabric/core": "FabricLabs/fabric#master",
     "discord.js": "^12.5.3",
     "lodash.merge": "^4.6.2"
   }
