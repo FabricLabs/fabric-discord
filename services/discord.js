@@ -28,6 +28,7 @@ class Discord extends Service {
         'guilds.join'
       ],
       intents: ['GUILDS', 'GUILD_MESSAGES', 'GUILD_MESSAGE_REACTIONS', 'DIRECT_MESSAGES'],
+      secure: false
     }, settings);
 
     // Stores the Discord client
@@ -88,6 +89,7 @@ class Discord extends Service {
 
   async _handleClientMessage (message) {
     if (message.author.bot) return; // ignore bots
+
     const now = (new Date()).toISOString();
     this.emit('log', `${now} ${message.author.username}: ${message.content}`);
 
@@ -211,7 +213,7 @@ class Discord extends Service {
     const params = qs.encode({
       client_id: this.settings.app.id,
       permissions: 0,
-      redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
+      redirect_uri: `http${(this.settings.secure) ? 's' : ''}://${this.settings.authority}/services/discord/authorize`,
       scope: ['identify'].join(','),
       response_type: 'code'
     });
