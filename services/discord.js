@@ -4,7 +4,8 @@
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, Intents } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder } = require('discord.js');
+
 
 // Fabric Types
 const Actor = require('@fabric/core/types/actor');
@@ -27,7 +28,19 @@ class Discord extends Service {
         'guilds',
         'guilds.join'
       ],
-      intents: ['GUILDS', 'GUILD_MESSAGES', 'GUILD_MESSAGE_REACTIONS', 'DIRECT_MESSAGES'],
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.DirectMessageReactions,
+        GatewayIntentBits.DirectMessageTyping,
+        GatewayIntentBits.GuildMessageTyping,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.MessageContent
+      ],
       secure: false
     }, settings);
 
@@ -57,6 +70,10 @@ class Discord extends Service {
   async start () {
     const service = this;
     const promise = new Promise((resolve, reject) => {
+      service.client.on('error', (error) => {
+        this.emit('error', error);
+      });
+
       service.client.once('ready', async function () {
         await service.sync();
         service.emit('ready');
