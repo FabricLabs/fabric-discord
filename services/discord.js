@@ -11,6 +11,12 @@ const { Client, GatewayIntentBits, SlashCommandBuilder } = require('discord.js')
 const Actor = require('@fabric/core/types/actor');
 const Service = require('@fabric/core/types/service');
 
+const {
+  applyVoiceStateUpdate,
+  seedActiveVoiceMember,
+  flagsFromVoiceState
+} = require('../functions/voiceChannelStats');
+
 /**
  * Discord service for Fabric.
  */
@@ -45,9 +51,25 @@ class Discord extends Service {
       state: {
         channels: {},
         guilds: {},
-        users: {}
+        users: {},
+        voice: {
+          active: {},
+          aggregates: {
+            channels: {},
+            guilds: {}
+          }
+        }
       }
     }, settings);
+
+    this.slashCommands = {
+      'activate': {
+        data: new SlashCommandBuilder().setName('activate').setDescription('Enables the bot in the current channel.'),
+        async execute (interaction) {
+          await interaction.reply('Enabling...');
+        }
+      }
+    };
 
     // Stores the Discord client
     this.client = new Client(this.settings);
@@ -68,6 +90,11 @@ class Discord extends Service {
 
   get guilds () {
     return Object.values(this._state.content.guilds);
+  }
+
+  /** @returns {Object} Live voice occupancy plus per-channel/guild aggregates (joins, leaves, peaks, totalMemberMs). */
+  get voice () {
+    return this._ensureVoiceState();
   }
 
   get routes () {
@@ -91,7 +118,14 @@ class Discord extends Service {
 
       service.client.once('ready', async function () {
         await service.sync();
+        await service._seedActiveVoiceFromGuilds();
         service.emit('ready');
+      });
+
+      service.client.on('voiceStateUpdate', (oldState, newState) => {
+        service._handleVoiceStateUpdate(oldState, newState).catch((err) => {
+          service.emit('error', err);
+        });
       });
 
       // Handle messages
@@ -171,6 +205,79 @@ class Discord extends Service {
     res.send('ok');
   }
 
+  _ensureVoiceState () {
+    const c = this._state.content;
+    if (!c.voice) {
+      c.voice = {
+        active: {},
+        aggregates: { channels: {}, guilds: {} }
+      };
+    }
+    if (!c.voice.active) c.voice.active = {};
+    if (!c.voice.aggregates) c.voice.aggregates = { channels: {}, guilds: {} };
+    if (!c.voice.aggregates.channels) c.voice.aggregates.channels = {};
+    if (!c.voice.aggregates.guilds) c.voice.aggregates.guilds = {};
+    return c.voice;
+  }
+
+  async _seedActiveVoiceFromGuilds () {
+    const voice = this._ensureVoiceState();
+    const now = Date.now();
+    for (const guild of this.client.guilds.cache.values()) {
+      for (const vs of guild.voiceStates.cache.values()) {
+        if (!vs.channelId) continue;
+        const ch = guild.channels.cache.get(vs.channelId);
+        const slice = {
+          channelId: vs.channelId,
+          guildId: guild.id,
+          userId: vs.id,
+          flags: flagsFromVoiceState(vs)
+        };
+        seedActiveVoiceMember(voice, slice, now, ch?.name ?? null);
+      }
+    }
+    await this.commit();
+    this.emit('log', 'Seeded active voice channels from cache.');
+    return this;
+  }
+
+  async _handleVoiceStateUpdate (oldState, newState) {
+    const voice = this._ensureVoiceState();
+    const now = Date.now();
+    const userId = newState.id;
+    const newChannelId = newState.channelId;
+    const channelName = newChannelId
+      ? (newState.guild.channels.cache.get(newChannelId)?.name ?? newState.channel?.name ?? null)
+      : null;
+
+    const oldSlice = {
+      channelId: oldState.channelId,
+      guildId: oldState.guild.id,
+      userId,
+      flags: flagsFromVoiceState(oldState)
+    };
+    const newSlice = {
+      channelId: newState.channelId,
+      guildId: newState.guild.id,
+      userId,
+      flags: flagsFromVoiceState(newState)
+    };
+
+    const result = applyVoiceStateUpdate(voice, oldSlice, newSlice, now, channelName);
+    if (!result.changed) return;
+
+    this.emit('voice', {
+      guildId: newSlice.guildId,
+      userId,
+      oldChannelId: oldSlice.channelId,
+      newChannelId: newSlice.channelId,
+      kind: result.kind,
+      channelName
+    });
+
+    await this.commit();
+  }
+
   async _sendToChannel (channelID, msg) {
     const channel = await this.client.channels.fetch(channelID);
     await channel.send(msg);
@@ -230,7 +337,7 @@ class Discord extends Service {
         guild: channel.guild.id
       };
       const members = await this.listChannelMembers(channel.id);
-      // console.debug('channel members:', members);
+      console.debug('channel members:', members);
     }
     this.commit();
     return this;
