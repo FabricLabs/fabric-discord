@@ -1,12 +1,21 @@
 'use strict';
 
 // Dependencies
+const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, Intents } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder } = require('discord.js');
+
 
 // Fabric Types
+const Actor = require('@fabric/core/types/actor');
 const Service = require('@fabric/core/types/service');
+
+const {
+  applyVoiceStateUpdate,
+  seedActiveVoiceMember,
+  flagsFromVoiceState
+} = require('../functions/voiceChannelStats');
 
 /**
  * Discord service for Fabric.
@@ -16,21 +25,76 @@ class Discord extends Service {
     super(settings);
 
     this.settings = merge({
+      authority: 'localhost:3040',
       token: null,
       alerts: [],
       scopes: [
-        'bot'
-      ]
+        'bot',
+        'identify',
+        'guilds',
+        'guilds.join'
+      ],
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.DirectMessageReactions,
+        GatewayIntentBits.DirectMessageTyping,
+        GatewayIntentBits.GuildMessageTyping,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.MessageContent
+      ],
+      secure: false,
+      state: {
+        channels: {},
+        guilds: {},
+        users: {},
+        voice: {
+          active: {},
+          aggregates: {
+            channels: {},
+            guilds: {}
+          }
+        }
+      }
     }, settings);
+
+    this.slashCommands = {
+      'activate': {
+        data: new SlashCommandBuilder().setName('activate').setDescription('Enables the bot in the current channel.'),
+        async execute (interaction) {
+          await interaction.reply('Enabling...');
+        }
+      }
+    };
 
     // Stores the Discord client
     this.client = new Client(this.settings);
 
+    // Fabric State
     this._state = {
-      status: 'STOPPED'
+      status: 'STOPPED',
+      guilds: {},
+      content: this.settings.state
     };
 
     return this;
+  }
+
+  get channels () {
+    return Object.values(this._state.content.channels);
+  }
+
+  get guilds () {
+    return Object.values(this._state.content.guilds);
+  }
+
+  /** @returns {Object} Live voice occupancy plus per-channel/guild aggregates (joins, leaves, peaks, totalMemberMs). */
+  get voice () {
+    return this._ensureVoiceState();
   }
 
   get routes () {
@@ -48,16 +112,39 @@ class Discord extends Service {
   async start () {
     const service = this;
     const promise = new Promise((resolve, reject) => {
-      service.client.once('ready', function () {
-        service.emit('ready');
-        service.emit('log', `Discord application link: ${service.generateApplicationLink()}`);
-        resolve(service);
+      service.client.on('error', (error) => {
+        this.emit('error', error);
       });
 
+      service.client.once('ready', async function () {
+        await service.sync();
+        await service._seedActiveVoiceFromGuilds();
+        service.emit('ready');
+      });
+
+      service.client.on('voiceStateUpdate', (oldState, newState) => {
+        service._handleVoiceStateUpdate(oldState, newState).catch((err) => {
+          service.emit('error', err);
+        });
+      });
+
+      // Handle messages
       service.client.on('message', service._handleClientMessage.bind(service));
+      service.client.on('messageCreate', service._handleClientMessage.bind(service));
+
+      if (!service.settings.token) {
+        const link = this.generateApplicationLink();
+        service.emit('error', `Discord token not provided.  Please visit ${link} to generate a token.`);
+        return reject(new Error('Discord token not provided.'));
+      }
+
       service.client.login(service.settings.token).catch((exception) => {
         service.emit('error', `Discord Internal Exception (DIE): ${exception}`);
         reject(exception);
+      }).then(() => {
+        service.emit('log', 'Discord client started.');
+        this.syncGuilds();
+        resolve(service);
       });
     });
 
@@ -65,33 +152,269 @@ class Discord extends Service {
   }
 
   async _handleClientMessage (message) {
+    if (message.author.bot) return; // ignore bots
+
     const now = (new Date()).toISOString();
-    this.emit('log', `Message received: ${message}`);
+    this.emit('log', `${now} ${message.author.username}: ${message.content}`);
+
+    // Standalone Commands
     if (message.content === '!ping') {
-      message.channel.send(`Pong!  Received your ping at ${now}.`);
+      return message.channel.send(`Pong!  Received your ping at ${now}.`);
     }
+
+    if (message.content === '!help') {
+      return message.channel.send('I am a bot!  I can help you with things.');
+    }
+
+    if (message.content === '!status') {
+      return message.channel.send('I am alive and well!');
+    }
+
+    if (message.content === '!sync') {
+      return this.sync();
+    }
+
+    // ## Fabric API
+    // Interact with the Fabric network using a local, message-based API.
+    // Activity Stream
+    const actor = new Actor({ name: `discord/users/${message.author.id}` });
+    const target = new Actor({ name: `discord/channels/${message.channel.id}` });
+
+    // Standard Activity Object
+    this.emit('activity', {
+      type: 'DiscordMessage',
+      actor: {
+        id: actor.id,
+        username: message.author.username,
+        ref: message.author.id // TODO: change name to "upstream ID" (UID)?
+      },
+      object: {
+        content: message.content,
+        created: message.createdTimestamp,
+      },
+      target: {
+        id: target.id,
+        name: message.channel.name, // is undefined in case of DM
+        type: message.channel.type,
+        ref: message.channel.id // TODO: change name to "upstream ID" (UID)?
+      }
+    });
   }
 
   async _handleOAuthCallback (req, res, next) {
     res.send('ok');
   }
 
-  async _sendToChannel(channelID, msg) {
+  _ensureVoiceState () {
+    const c = this._state.content;
+    if (!c.voice) {
+      c.voice = {
+        active: {},
+        aggregates: { channels: {}, guilds: {} }
+      };
+    }
+    if (!c.voice.active) c.voice.active = {};
+    if (!c.voice.aggregates) c.voice.aggregates = { channels: {}, guilds: {} };
+    if (!c.voice.aggregates.channels) c.voice.aggregates.channels = {};
+    if (!c.voice.aggregates.guilds) c.voice.aggregates.guilds = {};
+    return c.voice;
+  }
+
+  async _seedActiveVoiceFromGuilds () {
+    const voice = this._ensureVoiceState();
+    const now = Date.now();
+    for (const guild of this.client.guilds.cache.values()) {
+      for (const vs of guild.voiceStates.cache.values()) {
+        if (!vs.channelId) continue;
+        const ch = guild.channels.cache.get(vs.channelId);
+        const slice = {
+          channelId: vs.channelId,
+          guildId: guild.id,
+          userId: vs.id,
+          flags: flagsFromVoiceState(vs)
+        };
+        seedActiveVoiceMember(voice, slice, now, ch?.name ?? null);
+      }
+    }
+    await this.commit();
+    this.emit('log', 'Seeded active voice channels from cache.');
+    return this;
+  }
+
+  async _handleVoiceStateUpdate (oldState, newState) {
+    const voice = this._ensureVoiceState();
+    const now = Date.now();
+    const userId = newState.id;
+    const newChannelId = newState.channelId;
+    const channelName = newChannelId
+      ? (newState.guild.channels.cache.get(newChannelId)?.name ?? newState.channel?.name ?? null)
+      : null;
+
+    const oldSlice = {
+      channelId: oldState.channelId,
+      guildId: oldState.guild.id,
+      userId,
+      flags: flagsFromVoiceState(oldState)
+    };
+    const newSlice = {
+      channelId: newState.channelId,
+      guildId: newState.guild.id,
+      userId,
+      flags: flagsFromVoiceState(newState)
+    };
+
+    const result = applyVoiceStateUpdate(voice, oldSlice, newSlice, now, channelName);
+    if (!result.changed) return;
+
+    this.emit('voice', {
+      guildId: newSlice.guildId,
+      userId,
+      oldChannelId: oldSlice.channelId,
+      newChannelId: newSlice.channelId,
+      kind: result.kind,
+      channelName
+    });
+
+    await this.commit();
+  }
+
+  async _sendToChannel (channelID, msg) {
     const channel = await this.client.channels.fetch(channelID);
     await channel.send(msg);
   }
 
-  _listChannels () {
-    return this.client.channels.cache.keys();
+  async exchangeCodeForToken (code) {
+    const params = {
+      client_id: this.settings.app.id,
+      client_secret: this.settings.app.secret,
+      code: code,
+      grant_type: 'authorization_code',
+      scope: 'identify',
+      redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
+    };
+
+    const token = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: qs.encode(params)
+    }).catch((exception) => {
+      console.error('Could not fetch token:', exception);
+    }).then(response => response.json());
+
+    return token;
+  }
+
+  async getTokenUser (token) {
+    const response = await fetch('https://discord.com/api/oauth2/@me', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }).catch((exception) => {
+      console.error('Could not fetch user:', exception);
+    }).then(response => response.json());
+
+    return response.user;
+  }
+
+  async sync () {
+    this.emit('log', 'Syncing Discord service...');
+    const guilds = this.client.guilds.cache.map(guild => guild);
+    this._state.guilds = guilds;
+    await this.commit();
+    return this;
+  }
+
+  async syncAllChannels () {
+    const channels = await this._listChannels();
+    for (let i = 0; i < channels.length; i++) {
+      const channel = channels[i];
+      this._state.content.channels[channel.id] = {
+        id: channel.id,
+        name: channel.name,
+        type: channel.type,
+        guild: channel.guild.id
+      };
+      const members = await this.listChannelMembers(channel.id);
+      console.debug('channel members:', members);
+    }
+    this.commit();
+    return this;
+  }
+
+  async syncGuilds () {
+    const guilds = await this._listGuilds();
+    for (let i = 0; i < guilds.length; i++) {
+      const guild = guilds[i];
+      this._state.content.guilds[guild.id] = {
+        id: guild.id,
+        name: guild.name,
+        icon: guild.icon,
+        channels: guild.channels.cache.map(channel => channel.id),
+        members: guild.members.cache.map(member => member.id)
+      };
+    }
+    this.commit();
+    return this;
+  }
+
+  async _listChannels () {
+    const channels = [];
+    const guilds = await this._listGuilds();
+    for (let i = 0; i < guilds.length; i++) {
+      const guild = guilds[i];
+      const these = guild.channels.cache.map(channel => channel);
+      channels.push(...these);
+    }
+    return channels;
+  }
+
+  async _listGuilds () {
+    return this.client.guilds.cache.map(guild => guild);
+  }
+
+  async _listGuildMembers (guildID) {
+    console.debug('listing guild members:', guildID);
+  }
+
+  async listGuildMembers (guildID) {
+    const guild = await this.client.guilds.fetch(guildID);
+    return Object.values(guild.members);
+  }
+
+  async listChannelMembers (channelID) {
+    return new Promise((resolve, reject) => {
+      this.client.channels.fetch(channelID).catch((error) => {
+        console.error('Could not fetch channel:', error);
+      }).then((channel) => {
+        if (!channel) return reject(new Error('Channel not found.'));
+        resolve(Object.values(channel.members));
+      });
+    });
   }
 
   generateApplicationLink () {
     const params = qs.encode({
       client_id: this.settings.app.id,
       permissions: 0,
+      // redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
       scope: this.settings.scopes.join(',')
     });
-    return `https://discord.com/api/oauth2/authorize?${params}`;
+
+    return `http://discord.com/api/oauth2/authorize?${params}`;
+  }
+
+  generateAuthorizeLink () {
+    const params = qs.encode({
+      client_id: this.settings.app.id,
+      permissions: 0,
+      redirect_uri: `http${(this.settings.secure) ? 's' : ''}://${this.settings.authority}/services/discord/authorize`,
+      scope: ['identify'].join(','),
+      response_type: 'code'
+    });
+
+    return `https://discord.com/oauth2/authorize?${params}`;
   }
 }
 
