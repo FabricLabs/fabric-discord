@@ -3,8 +3,13 @@
   "version": "0.1.0-dev",
   "description": "Discord connectivity for Fabric agents.",
   "main": "services/discord.js",
+  "exports": {
+    ".": "./services/discord.js",
+    "./services/discord": "./services/discord.js",
+    "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js"
+  },
   "scripts": {
-    "report:install": "rm -rf node_modules && echo \"\n\" > package-lock.json && echo \"$ npm i\" > reports/install.log && npm i >> reports/install.log",
+    "report:install": "rm -rf node_modules && echo \"\n\" > package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log",
     "test": "mocha tests"
   },
   "repository": {
@@ -22,8 +27,12 @@
     "url": "https://github.com/FabricLabs/fabric-discord/issues"
   },
   "homepage": "https://github.com/FabricLabs/fabric-discord#readme",
+  "engines": {
+    "node": "24.15.0"
+  },
   "dependencies": {
-    "@fabric/core": "FabricLabs/fabric#feature/v0.1.0-RC1",
+    "@fabric/core": "FabricLabs/fabric#feature/rsi",
+    "cross-fetch": "=4.0.0",
     "discord.js": "=14.18.0",
     "lodash.merge": "=4.6.2"
   },
