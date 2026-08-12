@@ -9,7 +9,7 @@
     "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js"
   },
   "scripts": {
-    "report:install": "rm -rf node_modules && echo \"\n\" > package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log",
+    "report:install": "rm -rf node_modules && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log",
     "test": "mocha tests"
   },
   "repository": {
@@ -31,7 +31,7 @@
     "node": "24.15.0"
   },
   "dependencies": {
-    "@fabric/core": "FabricLabs/fabric#feature/rsi",
+    "@fabric/core": "FabricLabs/fabric#3c96383430f9f233a2f2be0850c0f2eb4c8366fb",
     "cross-fetch": "=4.0.0",
     "discord.js": "=14.18.0",
     "lodash.merge": "=4.6.2"

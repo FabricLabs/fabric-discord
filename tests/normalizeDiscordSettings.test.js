@@ -23,6 +23,20 @@ describe('normalizeDiscordSettings', function () {
     assert.strictEqual(n.announceActivities, true);
   });
 
+  it('skips blank aliases before selecting a credential', function () {
+    const n = normalizeDiscordSettings({
+      token: ' ',
+      botToken: 'tok',
+      channel: '  ',
+      channelId: '456',
+      appId: '  ',
+      clientId: '123'
+    });
+    assert.strictEqual(n.token, 'tok');
+    assert.strictEqual(n.channel, '456');
+    assert.strictEqual(n.app.id, '123');
+  });
+
   it('runtime summary never echoes secrets', function () {
     const summary = discordRuntimeSummary({
       enable: true,

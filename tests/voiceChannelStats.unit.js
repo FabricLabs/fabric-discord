@@ -78,6 +78,9 @@ describe('voiceChannelStats', function () {
       assert.ok(voice.active.c2.members.u1);
       assert.strictEqual(voice.aggregates.channels.c1.leaveCount, 1);
       assert.strictEqual(voice.aggregates.channels.c2.joinCount, 1);
+      // A move runs leave then join, so guild counters count channel transitions.
+      assert.strictEqual(voice.aggregates.guilds.g1.joinCount, 2);
+      assert.strictEqual(voice.aggregates.guilds.g1.leaveCount, 1);
     });
 
     it('updates flags in place when channel unchanged', function () {
@@ -96,9 +99,47 @@ describe('voiceChannelStats', function () {
         1500,
         'A'
       );
+      assert.strictEqual(r.changed, true);
       assert.strictEqual(r.kind, 'flags');
       assert.strictEqual(voice.active.c1.members.u1.selfMute, true);
       assert.strictEqual(voice.aggregates.channels.c1.joinCount, 1);
+    });
+
+    it('does not claim a flags change when the member is not tracked', function () {
+      const voice = emptyVoice();
+      const r = applyVoiceStateUpdate(
+        voice,
+        { channelId: 'c1', guildId: 'g1', userId: 'u-missing', flags: { selfMute: false } },
+        { channelId: 'c1', guildId: 'g1', userId: 'u-missing', flags: { selfMute: true } },
+        1500,
+        'A'
+      );
+      assert.strictEqual(r.changed, false);
+      assert.strictEqual(voice.active.c1, undefined);
+    });
+
+    it('does not claim a flags change when active members map is missing', function () {
+      const voice = emptyVoice();
+      voice.active.c1 = { guildId: 'g1', channelName: 'A', updatedAt: 1 };
+      const r = applyVoiceStateUpdate(
+        voice,
+        { channelId: 'c1', guildId: 'g1', userId: 'u1', flags: { selfMute: false } },
+        { channelId: 'c1', guildId: 'g1', userId: 'u1', flags: { selfMute: true } },
+        1600,
+        'A'
+      );
+      assert.strictEqual(r.changed, false);
+      assert.strictEqual(voice.active.c1.members, undefined);
+    });
+
+    it('does not double-count joinCount when the member is already tracked', function () {
+      const voice = emptyVoice();
+      const join = { channelId: 'c1', guildId: 'g1', userId: 'u1', flags: {} };
+      const none = { channelId: null, guildId: 'g1', userId: 'u1', flags: {} };
+      applyVoiceStateUpdate(voice, none, join, 1000, 'A');
+      applyVoiceStateUpdate(voice, none, join, 5000, 'A');
+      assert.strictEqual(voice.aggregates.channels.c1.joinCount, 1);
+      assert.strictEqual(voice.active.c1.members.u1.joinedAt, 1000);
     });
   });
 
@@ -135,6 +176,18 @@ describe('voiceChannelStats', function () {
         'L'
       );
       assert.strictEqual(voice.active.c1.members.u1.selfMute, true);
+    });
+
+    it('does not throw when a persisted channel record has no members map', function () {
+      const voice = emptyVoice();
+      voice.active.c1 = { guildId: 'g1', name: 'A', updatedAt: 0 };
+      assert.doesNotThrow(() => seedActiveVoiceMember(
+        voice,
+        { channelId: 'c1', guildId: 'g1', userId: 'u1', flags: {} },
+        1000,
+        'A'
+      ));
+      assert.ok(voice.active.c1.members.u1);
     });
   });
 

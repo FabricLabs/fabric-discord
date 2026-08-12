@@ -7,14 +7,23 @@
  * @param {object} [raw]
  * @returns {object}
  */
+function firstNonEmpty (...vals) {
+  for (const v of vals) {
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return null;
+}
+
 function normalizeDiscordSettings (raw = {}) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const appIn = (src.app && typeof src.app === 'object') ? src.app : {};
-  const token = String(src.token || src.botToken || '').trim() || null;
-  const appId = String(appIn.id || src.appId || src.clientId || '').trim() || null;
-  const appSecret = String(appIn.secret || src.appSecret || src.clientSecret || '').trim() || null;
-  const channel = String(src.channel || src.channelId || '').trim() || null;
-  const webhook = String(src.webhook || src.webhookUrl || '').trim() || null;
+  const token = firstNonEmpty(src.token, src.botToken);
+  const appId = firstNonEmpty(appIn.id, src.appId, src.clientId);
+  const appSecret = firstNonEmpty(appIn.secret, src.appSecret, src.clientSecret);
+  const channel = firstNonEmpty(src.channel, src.channelId);
+  const webhook = firstNonEmpty(src.webhook, src.webhookUrl);
   const enable = src.enable === true || src.enable === 1 || src.enable === 'true' ||
     !!(token || webhook);
 

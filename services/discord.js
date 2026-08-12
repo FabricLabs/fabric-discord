@@ -24,7 +24,7 @@ class Discord extends Service {
   constructor (settings = {}) {
     super(settings);
 
-    this.settings = merge({
+    const defaults = {
       authority: 'localhost:3040',
       token: null,
       channel: null, // default announce / alert channel id
@@ -70,7 +70,15 @@ class Discord extends Service {
           }
         }
       }
-    }, settings);
+    };
+    this.settings = merge(defaults, settings);
+    // lodash.merge arrays by index — caller-supplied lists must replace, not splice.
+    if (Array.isArray(settings.intents)) this.settings.intents = settings.intents.slice();
+    if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
+    if (this.settings.token != null) {
+      const trimmed = String(this.settings.token).trim();
+      this.settings.token = trimmed || null;
+    }
 
     this.slashCommands = {
       'activate': {
@@ -81,10 +89,18 @@ class Discord extends Service {
       }
     };
 
+    this._onClientError = (error) => { this.emit('error', error); };
+    this._onVoiceStateUpdate = (oldState, newState) => {
+      this._handleVoiceStateUpdate(oldState, newState).catch((err) => {
+        this.emit('error', err);
+      });
+    };
+    this._onClientMessage = this._handleClientMessage.bind(this);
+    this._onClientReady = this._onClientReady.bind(this);
+    this._clientDestroyed = false;
+
     // discord.js Client — intents only (token via login()).
-    this.client = new Client({
-      intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
-    });
+    this.client = this._createClient();
 
     // Fabric State
     this._state = {
@@ -124,7 +140,12 @@ class Discord extends Service {
       this.emit('warning', 'Discord alert skipped: no settings.channel');
       return null;
     }
-    return this.postToChannel(channelId, msg);
+    try {
+      return await this.postToChannel(channelId, msg);
+    } catch (exception) {
+      this.emit('error', `Discord alert failed: ${exception}`);
+      return null;
+    }
   }
 
   /**
@@ -165,59 +186,77 @@ class Discord extends Service {
     return this.postToChannel(channelId, msg);
   }
 
+  _createClient () {
+    return new Client({
+      intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
+    });
+  }
+
+  _attachClientListeners () {
+    this.client.on('error', this._onClientError);
+    this.client.once('ready', this._onClientReady);
+    this.client.on('voiceStateUpdate', this._onVoiceStateUpdate);
+    this.client.on('messageCreate', this._onClientMessage);
+  }
+
+  _detachClientListeners () {
+    if (!this.client) return;
+    this.client.removeListener('error', this._onClientError);
+    this.client.removeListener('ready', this._onClientReady);
+    this.client.removeListener('voiceStateUpdate', this._onVoiceStateUpdate);
+    this.client.removeListener('messageCreate', this._onClientMessage);
+  }
+
+  async _onClientReady () {
+    try {
+      await this.sync();
+      await this._seedActiveVoiceFromGuilds();
+      this._state.status = 'READY';
+      this.emit('ready');
+    } catch (err) {
+      this.emit('error', err);
+    }
+  }
+
   async start () {
-    const service = this;
-    // Fail closed before wiring the Discord client when no bot token is configured.
-    if (!service.settings.token) {
+    // Bot mode: fail closed before wiring the Discord client when no token is configured.
+    // Webhook-only consumers should not call start().
+    const token = String(this.settings.token || '').trim();
+    if (!token) {
       let hint = 'https://discord.com/developers/applications';
       try {
-        if (service.settings.app && service.settings.app.id) {
-          hint = service.generateApplicationLink();
+        if (this.settings.app && this.settings.app.id) {
+          hint = this.generateApplicationLink();
         }
       } catch (_) {
         // ignore link generation failures; token absence is the security gate
       }
-      service.emit('error', `Discord token not provided.  Please visit ${hint} to generate a token.`);
-      throw new Error('Discord token not provided.');
+      throw new Error(`Discord token not provided.  Please visit ${hint} to generate a token.`);
+    }
+    this.settings.token = token;
+
+    if (!this.client || this._clientDestroyed) {
+      this.client = this._createClient();
+      this._clientDestroyed = false;
     }
 
-    const promise = new Promise((resolve, reject) => {
-      service.client.on('error', (error) => {
-        this.emit('error', error);
-      });
+    this._detachClientListeners();
+    this._attachClientListeners();
 
-      service.client.once('ready', async function () {
-        await service.sync();
-        await service._seedActiveVoiceFromGuilds();
-        service._state.status = 'READY';
-        service.emit('ready');
-      });
-
-      service.client.on('voiceStateUpdate', (oldState, newState) => {
-        service._handleVoiceStateUpdate(oldState, newState).catch((err) => {
-          service.emit('error', err);
-        });
-      });
-
-      // Handle messages
-      service.client.on('message', service._handleClientMessage.bind(service));
-      service.client.on('messageCreate', service._handleClientMessage.bind(service));
-
-      service.client.login(service.settings.token).catch((exception) => {
-        service.emit('error', `Discord Internal Exception (DIE): ${exception}`);
-        reject(exception);
-      }).then(() => {
-        service.emit('log', 'Discord client started.');
-        this.syncGuilds();
-        resolve(service);
-      });
-    });
-
-    return promise;
+    try {
+      await this.client.login(token);
+    } catch (exception) {
+      this.emit('error', `Discord Internal Exception (DIE): ${exception}`);
+      throw exception;
+    }
+    this.emit('log', 'Discord client started.');
+    void this.syncGuilds().catch((err) => this.emit('error', err));
+    return this;
   }
 
   async stop () {
     this._state.status = 'STOPPING';
+    this._detachClientListeners();
     try {
       if (this.client && typeof this.client.destroy === 'function') {
         await this.client.destroy();
@@ -225,6 +264,7 @@ class Discord extends Service {
     } catch (err) {
       this.emit('error', err);
     }
+    this._clientDestroyed = true;
     this._state.status = 'STOPPED';
     this.emit('stopped');
     return this;
@@ -234,7 +274,11 @@ class Discord extends Service {
     if (message.author.bot) return; // ignore bots
 
     const now = (new Date()).toISOString();
-    this.emit('log', `${now} ${message.author.username}: ${message.content}`);
+    const isDm = message.channel.type === ChannelType.DM;
+    // Do not write DM bodies / usernames at default log verbosity.
+    this.emit('debug', isDm
+      ? `${now} discord dm from ${message.author.id} (${String(message.content || '').length} chars)`
+      : `${now} ${message.author.username}: ${message.content}`);
 
     // ## Fabric API
     // Interact with the Fabric network using a local, message-based API.
@@ -364,45 +408,59 @@ class Discord extends Service {
   }
 
   async exchangeCodeForToken (code) {
+    const scheme = this.settings.secure ? 'https' : 'http';
     const params = {
       client_id: this.settings.app.id,
       client_secret: this.settings.app.secret,
       code: code,
       grant_type: 'authorization_code',
       scope: 'identify',
-      redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
+      redirect_uri: `${scheme}://${this.settings.authority}/services/discord/authorize`
     };
 
-    const token = await fetch('https://discord.com/api/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: qs.encode(params)
-    }).catch((exception) => {
+    let response;
+    try {
+      response = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: qs.encode(params)
+      });
+    } catch (exception) {
       console.error('Could not fetch token:', exception);
-    }).then(response => response.json());
-
-    return token;
+      throw exception;
+    }
+    if (!response || !response.ok) {
+      const status = response ? response.status : 'no-response';
+      throw new Error(`Discord OAuth token exchange failed (${status})`);
+    }
+    return response.json();
   }
 
   async getTokenUser (token) {
-    const response = await fetch('https://discord.com/api/oauth2/@me', {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }).catch((exception) => {
+    let response;
+    try {
+      response = await fetch('https://discord.com/api/oauth2/@me', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+    } catch (exception) {
       console.error('Could not fetch user:', exception);
-    }).then(response => response.json());
-
-    return response.user;
+      throw exception;
+    }
+    if (!response || !response.ok) {
+      const status = response ? response.status : 'no-response';
+      throw new Error(`Discord OAuth user lookup failed (${status})`);
+    }
+    const body = await response.json();
+    return body && body.user ? body.user : null;
   }
 
   async sync () {
     this.emit('log', 'Syncing Discord service...');
-    const guilds = this.client.guilds.cache.map(guild => guild);
-    this._state.guilds = guilds;
-    await this.commit();
+    await this.syncGuilds();
     return this;
   }
 
@@ -417,9 +475,9 @@ class Discord extends Service {
         guild: channel.guild.id
       };
       const members = await this.listChannelMembers(channel.id);
-      console.debug('channel members:', members);
+      this.emit('debug', `Discord channel ${channel.id} has ${members.length} members.`);
     }
-    this.commit();
+    await this.commit();
     return this;
   }
 
@@ -435,7 +493,7 @@ class Discord extends Service {
         members: guild.members.cache.map(member => member.id)
       };
     }
-    this.commit();
+    await this.commit();
     return this;
   }
 
@@ -455,23 +513,29 @@ class Discord extends Service {
   }
 
   async _listGuildMembers (guildID) {
-    console.debug('listing guild members:', guildID);
+    return this.listGuildMembers(guildID);
   }
 
   async listGuildMembers (guildID) {
     const guild = await this.client.guilds.fetch(guildID);
-    return Object.values(guild.members);
+    // discord.js v14: members is a GuildMemberManager — use .cache
+    return Array.from(guild.members.cache.values());
   }
 
   async listChannelMembers (channelID) {
-    return new Promise((resolve, reject) => {
-      this.client.channels.fetch(channelID).catch((error) => {
-        console.error('Could not fetch channel:', error);
-      }).then((channel) => {
-        if (!channel) return reject(new Error('Channel not found.'));
-        resolve(Object.values(channel.members));
-      });
-    });
+    let channel;
+    try {
+      channel = await this.client.channels.fetch(channelID);
+    } catch (error) {
+      console.error('Could not fetch channel:', error);
+      throw error;
+    }
+    if (!channel) throw new Error('Channel not found.');
+    if (!channel.members || typeof channel.members.values !== 'function') {
+      // Text channels may not expose a member collection the same way as voice.
+      return [];
+    }
+    return Array.from(channel.members.values());
   }
 
   generateApplicationLink () {
@@ -479,18 +543,19 @@ class Discord extends Service {
       client_id: this.settings.app.id,
       permissions: 0,
       // redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
-      scope: this.settings.scopes.join(',')
+      scope: this.settings.scopes.join(' ')
     });
 
-    return `http://discord.com/api/oauth2/authorize?${params}`;
+    return `https://discord.com/api/oauth2/authorize?${params}`;
   }
 
   generateAuthorizeLink () {
+    const scheme = this.settings.secure ? 'https' : 'http';
     const params = qs.encode({
       client_id: this.settings.app.id,
       permissions: 0,
-      redirect_uri: `http${(this.settings.secure) ? 's' : ''}://${this.settings.authority}/services/discord/authorize`,
-      scope: ['identify'].join(','),
+      redirect_uri: `${scheme}://${this.settings.authority}/services/discord/authorize`,
+      scope: ['identify'].join(' '),
       response_type: 'code'
     });
 

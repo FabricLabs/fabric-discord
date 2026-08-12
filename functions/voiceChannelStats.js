@@ -80,6 +80,7 @@ function flagsFromVoiceState (vs) {
 }
 
 /**
+ * Shallow-copy voice flags from a slice (tests / callers that must not mutate the slice).
  * @param {VoiceStateSlice} vs
  * @returns {VoiceFlags}
  */
@@ -107,16 +108,20 @@ function applyVoiceStateUpdate (voice, oldSlice, newSlice, now, channelName) {
   if (oldC === newC) {
     if (!newC) return { changed: false };
     const rec = active[newC];
-    if (rec && rec.members[userId]) {
-      Object.assign(rec.members[userId], newSlice.flags);
+    // Guard missing active records / members map (partial state) — do not claim a change.
+    if (rec && rec.members && typeof rec.members === 'object' && rec.members[userId]) {
+      Object.assign(rec.members[userId], flagsFromSlice(newSlice));
       rec.updatedAt = now;
+      return { changed: true, kind: 'flags' };
     }
-    return { changed: true, kind: 'flags' };
+    return { changed: false };
   }
+
+  let kind = null;
 
   if (oldC) {
     const rec = active[oldC];
-    if (rec && rec.members[userId]) {
+    if (rec && rec.members && typeof rec.members === 'object' && rec.members[userId]) {
       const m = rec.members[userId];
       const joinedAt = typeof m.joinedAt === 'number' ? m.joinedAt : now;
       const ms = Math.max(0, now - joinedAt);
@@ -128,6 +133,7 @@ function applyVoiceStateUpdate (voice, oldSlice, newSlice, now, channelName) {
       gAgg.totalMemberMs += ms;
       delete rec.members[userId];
       if (Object.keys(rec.members).length === 0) delete active[oldC];
+      kind = 'session';
     }
   }
 
@@ -143,23 +149,36 @@ function applyVoiceStateUpdate (voice, oldSlice, newSlice, now, channelName) {
       active[newC].guildId = guildId;
       if (channelName != null) active[newC].name = channelName;
       active[newC].updatedAt = now;
+      if (!active[newC].members || typeof active[newC].members !== 'object') {
+        active[newC].members = {};
+      }
     }
     const rec = active[newC];
-    rec.members[userId] = {
-      joinedAt: now,
-      ...newSlice.flags
-    };
-    const chAgg = ensureChannelAgg(aggregates, newC);
-    const gAgg = ensureGuildAgg(aggregates, guildId);
-    chAgg.joinCount += 1;
-    gAgg.joinCount += 1;
-    const n = Object.keys(rec.members).length;
-    if (n > chAgg.peakConcurrent) chAgg.peakConcurrent = n;
-    const guildSum = guildActiveMemberCount(active, guildId);
-    if (guildSum > gAgg.peakConcurrentMembers) gAgg.peakConcurrentMembers = guildSum;
+    // Gateway RESUME can replay a join with uncached oldState (oldC null) while
+    // the member is already in the map — do not reset joinedAt or double-count.
+    if (rec.members[userId]) {
+      Object.assign(rec.members[userId], flagsFromSlice(newSlice));
+      rec.updatedAt = now;
+      if (!kind) kind = 'flags';
+    } else {
+      rec.members[userId] = {
+        joinedAt: now,
+        ...newSlice.flags
+      };
+      const chAgg = ensureChannelAgg(aggregates, newC);
+      const gAgg = ensureGuildAgg(aggregates, guildId);
+      chAgg.joinCount += 1;
+      gAgg.joinCount += 1;
+      const n = Object.keys(rec.members).length;
+      if (n > chAgg.peakConcurrent) chAgg.peakConcurrent = n;
+      const guildSum = guildActiveMemberCount(active, guildId);
+      if (guildSum > gAgg.peakConcurrentMembers) gAgg.peakConcurrentMembers = guildSum;
+      kind = 'session';
+    }
   }
 
-  return { changed: true, kind: 'session' };
+  if (!kind) return { changed: false };
+  return { changed: true, kind };
 }
 
 /**
@@ -174,8 +193,9 @@ function seedActiveVoiceMember (voice, slice, now, channelName) {
   const { channelId, guildId, userId } = slice;
   if (!channelId) return;
   const { active } = voice;
-  if (active[channelId]?.members[userId]) return;
-  if (!active[channelId]) {
+  const existing = active[channelId];
+  if (existing && existing.members && existing.members[userId]) return;
+  if (!existing) {
     active[channelId] = {
       guildId,
       name: channelName,
@@ -183,9 +203,12 @@ function seedActiveVoiceMember (voice, slice, now, channelName) {
       updatedAt: now
     };
   } else {
-    active[channelId].guildId = guildId;
-    if (channelName != null) active[channelId].name = channelName;
-    active[channelId].updatedAt = now;
+    existing.guildId = guildId;
+    if (channelName != null) existing.name = channelName;
+    existing.updatedAt = now;
+    if (!existing.members || typeof existing.members !== 'object') {
+      existing.members = {};
+    }
   }
   active[channelId].members[userId] = {
     joinedAt: now,

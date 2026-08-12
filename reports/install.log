@@ -1,13 +1,28 @@
-$ npm i
+$ npm i --allow-git=all
+npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
 
-added 306 packages, and audited 307 packages in 41s
+up to date, audited 277 packages in 1s
 
-54 packages are looking for funding
+51 packages are looking for funding
   run `npm fund` for details
 
-4 vulnerabilities (1 moderate, 3 high)
+11 vulnerabilities (6 moderate, 5 high)
 
-To address all issues (including breaking changes), run:
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
   npm audit fix --force
 
+Some issues need review, and may require choosing
+a different dependency.
+
 Run `npm audit` for details.
+npm warn install-scripts 5 packages had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @fabric/core@0.1.0-RC1 (install: node-gyp rebuild)
+npm warn install-scripts   classic-level@3.0.0 (install: node-gyp rebuild)
+npm warn install-scripts   @soatok/elliptic-to-noble@9999.0.0 (postinstall: node postinstall.js)
+npm warn install-scripts   fsevents@2.3.3 (install: (install scripts present))
+npm warn install-scripts   zeromq@6.5.0 (install: node ./script/install.js)
+npm warn install-scripts
+npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
