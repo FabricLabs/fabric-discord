@@ -40,5 +40,81 @@ describe('Discord', function () {
         await discord.client.destroy();
       }
     });
+
+    it('maps discord.js ChannelType numbers to the legacy activity strings', function () {
+      const { ChannelType } = require('discord.js');
+      const map = Discord.legacyActivityChannelType;
+      assert.strictEqual(map(ChannelType.DM), 'dm');
+      assert.strictEqual(map(ChannelType.GroupDM), 'dm');
+      assert.strictEqual(map(ChannelType.GuildText), 'text');
+      assert.strictEqual(map(ChannelType.GuildAnnouncement), 'news');
+      assert.strictEqual(map(ChannelType.GuildVoice), 'voice');
+      assert.strictEqual(map(ChannelType.GuildCategory), 'category');
+      assert.strictEqual(map(ChannelType.GuildForum), 'forum');
+      assert.strictEqual(map(99), 99);
+    });
+
+    it('OAuth callback is not implemented (501)', async function () {
+      const discord = new Discord();
+      let status = 200;
+      let body = null;
+      const res = {
+        status (code) {
+          status = code;
+          return this;
+        },
+        json (obj) {
+          body = obj;
+          return this;
+        },
+        send (msg) {
+          body = msg;
+          return this;
+        }
+      };
+      await discord._handleOAuthCallback({}, res);
+      assert.strictEqual(status, 501);
+      assert.strictEqual(body && body.status, 'error');
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
+
+    it('this core pin loads IdentityCrossSign (fabric #185)', function () {
+      const { SIGN_TYPE, buildCrossSignMessage } = require('@fabric/core/functions/identityCrossSign');
+      assert.strictEqual(SIGN_TYPE, 'IdentityCrossSign');
+      assert.strictEqual(typeof buildCrossSignMessage, 'function');
+      const nonce = 'ab'.repeat(32);
+      const local = '11'.repeat(32);
+      const peer = '22'.repeat(32);
+      assert.ok(buildCrossSignMessage(nonce, local, peer));
+      assert.strictEqual(buildCrossSignMessage(nonce, 'aa:bb', peer), null);
+    });
+
+    it('emits DiscordMessage activity with legacy target.type strings', async function () {
+      const { ChannelType } = require('discord.js');
+      const discord = new Discord({ autoCommands: false });
+      const seen = [];
+      discord.on('activity', (activity) => seen.push(activity));
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: { id: 'c-dm', type: ChannelType.DM, name: undefined },
+        id: 'm1',
+        content: 'hello',
+        createdTimestamp: 1
+      });
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: { id: 'c-text', type: ChannelType.GuildText, name: 'general' },
+        id: 'm2',
+        content: 'hello',
+        createdTimestamp: 2
+      });
+      assert.strictEqual(seen[0].target.type, 'dm');
+      assert.strictEqual(seen[1].target.type, 'text');
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
   });
 });

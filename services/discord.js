@@ -18,6 +18,32 @@ const {
 } = require('../functions/voiceChannelStats');
 
 /**
+ * Map discord.js v14 numeric ChannelType values to the legacy string activity
+ * contract (`'dm'` / `'text'` / `'news'`). Unknown types pass through.
+ * @param {number} channelType
+ * @returns {string|number}
+ */
+function legacyActivityChannelType (channelType) {
+  switch (channelType) {
+    case ChannelType.DM:
+    case ChannelType.GroupDM:
+      return 'dm';
+    case ChannelType.GuildText:
+      return 'text';
+    case ChannelType.GuildAnnouncement:
+      return 'news';
+    case ChannelType.GuildVoice:
+      return 'voice';
+    case ChannelType.GuildCategory:
+      return 'category';
+    case ChannelType.GuildForum:
+      return 'forum';
+    default:
+      return channelType;
+  }
+}
+
+/**
  * Discord service for Fabric.
  */
 class Discord extends Service {
@@ -287,8 +313,9 @@ class Discord extends Service {
     const actor = new Actor({ name: `discord/users/${message.author.id}` });
     const target = new Actor({ name: `discord/channels/${message.channel.id}` });
 
-    // Sensemaker (and other consumers) expect `type: 'dm'` for DMs — discord.js v14 uses numeric ChannelType (DM === 1).
-    const targetType = message.channel.type === ChannelType.DM ? 'dm' : message.channel.type;
+    // Sensemaker / GoonCitizen expect legacy strings (`'dm'` / `'text'`), not
+    // discord.js v14 numeric ChannelType values (DM === 1, GuildText === 0).
+    const targetType = legacyActivityChannelType(message.channel.type);
 
     // Standard Activity Object (emit before local commands so coordinators can claim).
     this.emit('activity', {
@@ -331,8 +358,17 @@ class Discord extends Service {
     }
   }
 
-  async _handleOAuthCallback (req, res, next) {
-    res.send('ok');
+  async _handleOAuthCallback (req, res) {
+    // Fail closed: no `state` + no code exchange yet. Do not claim success.
+    const payload = {
+      status: 'error',
+      message: 'Discord OAuth callback is not implemented'
+    };
+    if (res && typeof res.status === 'function') {
+      if (typeof res.json === 'function') return res.status(501).json(payload);
+      return res.status(501).send(payload.message);
+    }
+    if (res && typeof res.send === 'function') return res.send(payload.message);
   }
 
   _ensureVoiceState () {
@@ -543,7 +579,6 @@ class Discord extends Service {
     const params = qs.encode({
       client_id: this.settings.app.id,
       permissions: 0,
-      // redirect_uri: `http://${this.settings.authority}/services/discord/authorize`,
       scope: this.settings.scopes.join(' ')
     });
 
@@ -563,5 +598,7 @@ class Discord extends Service {
     return `https://discord.com/oauth2/authorize?${params}`;
   }
 }
+
+Discord.legacyActivityChannelType = legacyActivityChannelType;
 
 module.exports = Discord;

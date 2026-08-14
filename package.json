@@ -9,8 +9,8 @@
     "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js"
   },
   "scripts": {
-    "report:install": "rm -rf node_modules && echo \"\\n\" > package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log",
-    "test": "mocha tests"
+    "report:install": "rm -rf node_modules && mkdir -p reports && echo \"\\n\" > package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
+    "test": "mocha tests --extension js --exit"
   },
   "repository": {
     "type": "git",
