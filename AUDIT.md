@@ -1,11 +1,11 @@
 # Fabric Discord Security Audit
 Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dependency changes; keep this file aligned with the current lockfile.
 
-## Status (2026-08-12)
+## Status (2026-08-13)
 
 | Area | Posture |
 |------|---------|
-| `@fabric/core` | Git pin `FabricLabs/fabric#3c96383430f9f233a2f2be0850c0f2eb4c8366fb` (immutable SHA from `feature/rsi`) |
+| `@fabric/core` | Git pin `FabricLabs/fabric#feature/rsi` (lockfile SHA `3745041e3f50f484b188ab8e6cb03f515fcccca2`) |
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
 | Node | **`engines.node` = `24.15.0`** |
 | discord.js | **`14.18.0`** (deprecated upstream line; bump is a separate product decision) |
@@ -24,7 +24,7 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 
 ## Recommendations
 
-1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. Plain **`npm run report:install` keeps `package-lock.json`** — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all` then re-pin `package.json` to the lockfile SHA.
+1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` wipes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to the lockfile SHA.
 2. Do not run **`npm audit fix --force`** — it will fight discord.js / mocha pins.
 3. Revisit discord.js when consumers can take a current major together.
 

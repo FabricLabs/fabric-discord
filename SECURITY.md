@@ -2,6 +2,8 @@
 
 Discord connectivity bridge for Fabric agents.
 
+**Outstanding queue:** [docs/OUTSTANDING.md](docs/OUTSTANDING.md).
+
 ## Adversarial environment
 Fabric networks are intended for deployment where **peers, relays, hubs, and operators may be hostile**. Design and review against:
 
@@ -17,7 +19,7 @@ Discord is a **third-party exfil / mirror surface**: treat mirrored chat and pre
 **Basics coverage:** [`tests/adversarialEnvironment.basics.test.js`](tests/adversarialEnvironment.basics.test.js).
 
 ## Outstanding (PR #2 / RSI follow-ups)
-- ~~**`@fabric/core` pin hygiene**~~ — `package.json` / lockfile pin `3c96383430f9f233a2f2be0850c0f2eb4c8366fb` after `feature/rsi` install; do not leave a moving branch tip in releases. `report:install` keeps `package-lock.json`.
+- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`; lockfile SHA **`3745041e…`**. `report:install` wipes the lockfile then `npm i --allow-git=all`. Re-pin releases to the lockfile SHA.
 - ~~**OAuth fetch fail-closed**~~ — `exchangeCodeForToken` / `getTokenUser` throw on network / non-OK responses (no swallowed `.catch` + `.then` on `undefined`).
 - ~~**OAuth redirect scheme**~~ — `exchangeCodeForToken` / `generateAuthorizeLink` use `settings.secure` for the hub `redirect_uri` scheme; Discord authorize endpoints stay on `https://discord.com`.
 - ~~**OAuth scope delimiter**~~ — authorize / application links join scopes with spaces (Discord OAuth2).
@@ -32,13 +34,13 @@ Discord is a **third-party exfil / mirror surface**: treat mirrored chat and pre
 - **OAuth CSRF** — `generateAuthorizeLink` still omits `state`; `_handleOAuthCallback` is a stub (`ok`) and does not exchange `code`. Do not expose `/services/discord/authorize` on a public hub until state + code exchange land (heavy lift).
 - **Voice flag persist** — same-channel mute/deafen still `commit()`s when the member is tracked; busy guilds may want session-only persistence.
 - **npm audit** — remaining advisories after pin (see [AUDIT.md](AUDIT.md)). Prefer deliberate overrides / bumps over `npm audit fix --force`. Re-check after each core bump.
-- **Consumers** — Hub / GoonCitizen should bump to a SHA that exports `./functions/normalizeDiscordSettings` so local fallbacks can be dropped.
+- **Consumers** — GoonCitizen already requires `@fabric/discord/functions/normalizeDiscordSettings` (local wrapper is a re-export). Hub does not depend on this package.
 
 ## Process
 1. `npm test` before merging token / OAuth / message-bridge changes.
 2. Prefer env / local settings for bot tokens; never log the raw token.
 3. Align with `@fabric/core` SECURITY.md when upgrading Fabric deps.
-4. Prefer `npm ci` / keep `package-lock.json`; `npm run report:install` removes `node_modules` only.
+4. Prefer `npm ci` / keep `package-lock.json`; `npm run report:install` wipes the lockfile then `npm i --allow-git=all`.
 
 ## Disclosure
 Canonical monitored contact: **`security@fabric.pub`**. GitHub Security Advisories and the repository issue tracker are alternate private channels.

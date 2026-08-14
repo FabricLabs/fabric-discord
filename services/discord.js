@@ -75,6 +75,7 @@ class Discord extends Service {
     // lodash.merge arrays by index — caller-supplied lists must replace, not splice.
     if (Array.isArray(settings.intents)) this.settings.intents = settings.intents.slice();
     if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
+    if (Array.isArray(settings.alerts)) this.settings.alerts = settings.alerts.slice();
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;

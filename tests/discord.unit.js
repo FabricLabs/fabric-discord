@@ -19,9 +19,11 @@ describe('Discord', function () {
     it('replaces caller-supplied intents instead of merging by index', async function () {
       const { GatewayIntentBits } = require('discord.js');
       const discord = new Discord({
-        intents: [GatewayIntentBits.Guilds]
+        intents: [GatewayIntentBits.Guilds],
+        alerts: ['only-this']
       });
       assert.deepStrictEqual(discord.settings.intents, [GatewayIntentBits.Guilds]);
+      assert.deepStrictEqual(discord.settings.alerts, ['only-this']);
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }
