@@ -19,7 +19,7 @@ Discord is a **third-party exfil / mirror surface**: treat mirrored chat and pre
 **Basics coverage:** [`tests/adversarialEnvironment.basics.test.js`](tests/adversarialEnvironment.basics.test.js).
 
 ## Outstanding (PR #2 / RSI follow-ups)
-- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`; lockfile Git commit SHA **`488a87da150b23c2591f1c75fa2c1ad6dac201f4`** ([#185](https://github.com/FabricLabs/fabric/pull/185): IdentityCrossSign `_normPubkey` + peer dial guards). `report:install` refreshes the lockfile after an upstream RSI push (`npm i --allow-git=all`). Re-pin releases to that lockfile SHA.
+- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`; lockfile Git commit SHA **`5557a2bfc830a3b472e6d26ed46b1a5fd7c16b9b`** ([#185](https://github.com/FabricLabs/fabric/pull/185): UTF-8 shoutbox `fabricChatText`, IPv6 `_connect` bracket strip, first-tier RC1 contract, `FROM_SEED` seeded status, `loadWallet({ fromFile: true })`). `report:install` refreshes the lockfile after an upstream RSI push (`npm i --allow-git=all`). Re-pin releases to that lockfile SHA.
 - ~~**OAuth fetch fail-closed**~~ — `exchangeCodeForToken` / `getTokenUser` throw on network / non-OK responses (no swallowed `.catch` + `.then` on `undefined`).
 - ~~**OAuth redirect scheme**~~ — `exchangeCodeForToken` / `generateAuthorizeLink` use `settings.secure` for the hub `redirect_uri` scheme; Discord authorize endpoints stay on `https://discord.com`.
 - ~~**OAuth scope delimiter**~~ — authorize / application links join scopes with spaces (Discord OAuth2).
@@ -32,7 +32,7 @@ Discord is a **third-party exfil / mirror surface**: treat mirrored chat and pre
 - ~~**`sync()` live Guild objects**~~ — `sync()` persists via `syncGuilds()` (plain ids), not discord.js `Guild` instances.
 - ~~**Default message log verbosity**~~ — DM bodies / usernames go to `debug`, not `log`.
 - **OAuth CSRF** — `generateAuthorizeLink` still omits `state`; `_handleOAuthCallback` returns **501** and does not exchange `code` (no longer replies `ok`). Do not expose `/services/discord/authorize` on a public hub until state + code exchange land (heavy lift).
-- **Voice flag persist** — same-channel mute/deafen still `commit()`s when the member is tracked; busy guilds may want session-only persistence.
+- ~~**Voice flag persist**~~ — session join/leave/move `commit()`s immediately; same-channel mute/deafen/stream flags debounce 5s (`_scheduleVoiceCommit`). `stop()` flushes a pending timer.
 - **npm audit** — remaining advisories after pin (see [AUDIT.md](AUDIT.md)). Prefer deliberate overrides / bumps over `npm audit fix --force`. Re-check after each core bump.
 - **Consumers** — GoonCitizen already requires `@fabric/discord/functions/normalizeDiscordSettings` (local wrapper is a re-export). Hub does not depend on this package.
 

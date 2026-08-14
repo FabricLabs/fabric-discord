@@ -125,6 +125,7 @@ class Discord extends Service {
     this._onClientMessage = this._handleClientMessage.bind(this);
     this._onClientReady = this._onClientReady.bind(this);
     this._clientDestroyed = false;
+    this._voiceCommitTimer = null;
 
     // discord.js Client — intents only (token via login()).
     this.client = this._createClient();
@@ -283,6 +284,11 @@ class Discord extends Service {
 
   async stop () {
     this._state.status = 'STOPPING';
+    const pendingVoice = !!this._voiceCommitTimer;
+    this._clearVoiceCommitTimer();
+    if (pendingVoice) {
+      try { await this.commit(); } catch (err) { this.emit('error', err); }
+    }
     this._detachClientListeners();
     try {
       if (this.client && typeof this.client.destroy === 'function') {
@@ -441,6 +447,35 @@ class Discord extends Service {
       channelName
     });
 
+    // Session join/leave/move persists immediately. Mute/deafen/stream flags
+    // are high-frequency; coalesce those commits so busy guilds do not write
+    // full state on every toggle.
+    if (result.kind === 'session') {
+      await this._flushVoiceCommit();
+    } else {
+      this._scheduleVoiceCommit();
+    }
+  }
+
+  _clearVoiceCommitTimer () {
+    if (!this._voiceCommitTimer) return;
+    clearTimeout(this._voiceCommitTimer);
+    this._voiceCommitTimer = null;
+  }
+
+  _scheduleVoiceCommit (delay = 5000) {
+    if (this._voiceCommitTimer) return;
+    this._voiceCommitTimer = setTimeout(() => {
+      this._voiceCommitTimer = null;
+      Promise.resolve(this.commit()).catch((exception) => {
+        this.emit('error', `Discord voice commit failed: ${exception}`);
+      });
+    }, delay);
+    if (typeof this._voiceCommitTimer.unref === 'function') this._voiceCommitTimer.unref();
+  }
+
+  async _flushVoiceCommit () {
+    this._clearVoiceCommitTimer();
     await this.commit();
   }
 

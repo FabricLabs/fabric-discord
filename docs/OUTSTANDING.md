@@ -1,22 +1,22 @@
 # Outstanding (security-first)
 Living queue for this repo. Detail: [SECURITY.md](../SECURITY.md). Suite march: [@fabric/core `docs/PRODUCTION_MARCH.md`](https://github.com/FabricLabs/fabric/blob/feature/rsi/docs/PRODUCTION_MARCH.md).
 
-**Last reviewed:** 2026-08-14 (core lockfile Git commit SHA `488a87da150b23c2591f1c75fa2c1ad6dac201f4` on `feature/rsi`, [#185](https://github.com/FabricLabs/fabric/pull/185)).
+**Last reviewed:** 2026-08-14 (core lockfile Git commit SHA `5557a2bfc830a3b472e6d26ed46b1a5fd7c16b9b` on `feature/rsi`, [#185](https://github.com/FabricLabs/fabric/pull/185)).
 
 ## Blockers before public OAuth
 1. **OAuth CSRF** — `generateAuthorizeLink` omits `state`; `_handleOAuthCallback` returns 501 (no code exchange). Do not expose `/services/discord/authorize` on a public hub until state + code exchange land.
 2. Discord is a **third-party exfil** — mirrored chat is non-private. Never commit bot tokens / webhook URLs.
 
 ## Next slices
-- [ ] Voice mute/deafen `commit()` volume on busy guilds (session-only persist option).
 - [ ] discord.js 14.18 is a deprecated line — coordinated consumer bump later (GoonCitizen).
 
 ## Closed this cut
-- `@fabric/core` lockfile Git commit SHA `488a87da150b23c2591f1c75fa2c1ad6dac201f4` ([#185](https://github.com/FabricLabs/fabric/pull/185): IdentityCrossSign `_normPubkey`, `signCrossSign` fabric pubkey, outbound dial skip, candidate-retry bound, NOISE teardown). `report:install` wipes the lockfile then `npm i --allow-git=all`. Canonical `host:port` dial keys for `pubkey@` pins are still local on core (not this pin).
+- `@fabric/core` lockfile Git commit SHA `5557a2bfc830a3b472e6d26ed46b1a5fd7c16b9b` ([#185](https://github.com/FabricLabs/fabric/pull/185): UTF-8 shoutbox `fabricChatText`, IPv6 `_connect` bracket strip, first-tier RC1 contract, IdentityCrossSign `_normPubkey`, `FROM_SEED` `status = 'seeded'`, `loadWallet({ fromFile: true })`). `report:install` wipes the lockfile then `npm i --allow-git=all`.
+- Voice flag persist: session transitions `commit()` immediately; mute/deafen/stream flags debounce 5s.
 - Activity `target.type` uses legacy `'dm'` / `'text'` / `'news'` strings (discord.js v14 ChannelType numbers).
 - GoonCitizen already requires `@fabric/discord/functions/normalizeDiscordSettings` (local file is a re-export). Hub does not depend on this package.
 - Blank alias credentials, voice replay/seed crashes, `catch().then()`, `stop()` listener leak, `sync()` Guild objects, DM log verbosity — already on tip (see [AUDIT.md](../AUDIT.md)).
 
 ## PRs
 [#1](https://github.com/FabricLabs/fabric-discord/pull/1) (`feature/v0.1.0-RC1`) — April CodeRabbit Majors are already on **this** `feature/rsi` tip (Client options, OAuth fetch fail-closed, `await commit()`, member `.cache`, `listChannelMembers` rethrow, voice `changed: false` when untracked). Left on that older PR: OAuth CSRF (heavy), `report:install` lockfile wipe (suite RSI convention). RSI additionally fails the authorize stub closed (501).
-[#2](https://github.com/FabricLabs/fabric-discord/pull/2) (`feature/rsi`) — remaining open: OAuth CSRF (`state` + code exchange) and voice-flag persist volume. Pin stays `FabricLabs/fabric#feature/rsi` until a release tag (currently **`488a87da1`**). GitHub core tip is still that SHA; local core dial-key canonicalize is not in this pin.
+[#2](https://github.com/FabricLabs/fabric-discord/pull/2) (`feature/rsi`) — remaining open: OAuth CSRF (`state` + code exchange). Pin stays `FabricLabs/fabric#feature/rsi` until a release tag (currently **`5557a2bf`**). CodeRabbit AUDIT MD058 (blank line before status table) is in this slice. Do not “fix” `report:install` lockfile wipe — suite RSI convention.
