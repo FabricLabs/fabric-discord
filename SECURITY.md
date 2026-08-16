@@ -22,7 +22,7 @@ A **webhook URL** authorizes posting through that webhook only. Never commit any
 **Basics coverage:** [`tests/adversarialEnvironment.basics.test.js`](tests/adversarialEnvironment.basics.test.js).
 
 ## Outstanding (PR #2 / RSI follow-ups)
-- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`. Lockfile Git commit SHA **`4a1ff0a5707143d965a2da61f700eda4be3a24ae`** ([#185](https://github.com/FabricLabs/fabric/pull/185)). `report:install` refreshes the lockfile after an upstream RSI (`feature/rsi`) push (`npm i --allow-git=all`). Re-pin releases to that lockfile SHA.
+- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`. Lockfile Git commit SHA **`f1b5e147d6d48a7689701527a55d1829227529b5`** ([#185](https://github.com/FabricLabs/fabric/pull/185)). `report:install` refreshes the lockfile after an upstream RSI (`feature/rsi`) push (`npm i --allow-git=all`). Re-pin releases to that lockfile SHA.
 - ~~**OAuth fetch fail-closed**~~ — `exchangeCodeForToken` / `getTokenUser` throw on network / non-OK responses (no swallowed `.catch` + `.then` on `undefined`).
 - ~~**OAuth redirect scheme**~~ — `exchangeCodeForToken` / `generateAuthorizeLink` use `settings.secure` for the hub `redirect_uri` scheme; Discord authorize endpoints stay on `https://discord.com`.
 - ~~**OAuth scope delimiter**~~ — authorize / application links join scopes with spaces (Discord OAuth2).
