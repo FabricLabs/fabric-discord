@@ -74,33 +74,44 @@ describe('Discord', function () {
       await discord._handleVoiceStateUpdate(inChannel, { ...inChannel, selfMute: true });
       assert.strictEqual(commits, 1);
       assert.ok(discord._voiceCommitTimer);
-      discord._clearVoiceCommitTimer();
+      await discord._flushVoiceCommit();
+      assert.strictEqual(commits, 2);
+      assert.strictEqual(discord._voiceCommitTimer, null);
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }
     });
 
-    it('OAuth callback is not implemented (501)', async function () {
-      const discord = new Discord();
-      let status = 200;
-      let body = null;
-      const res = {
-        status (code) {
-          status = code;
-          return this;
-        },
-        json (obj) {
-          body = obj;
-          return this;
-        },
-        send (msg) {
-          body = msg;
-          return this;
-        }
-      };
-      await discord._handleOAuthCallback({}, res);
-      assert.strictEqual(status, 501);
-      assert.strictEqual(body && body.status, 'error');
+    it('OAuth authorize URL carries CSRF state; callback still does not exchange code', async function () {
+      const discord = new Discord({ app: { id: '123' }, authority: 'localhost:3040' });
+      const authorize = new URL(discord.generateAuthorizeLink());
+      const state = authorize.searchParams.get('state');
+      assert.ok(/^[0-9a-f]{64}$/.test(state), '64-hex CSRF state');
+      assert.strictEqual(authorize.searchParams.get('response_type'), 'code');
+      function mockRes () {
+        let status = 200;
+        let body = null;
+        return {
+          status (code) { status = code; return this; },
+          json (obj) { body = obj; return this; },
+          send (msg) { body = msg; return this; },
+          get statusCode () { return status; },
+          get body () { return body; }
+        };
+      }
+      const stolen = mockRes();
+      await discord._handleOAuthCallback({ query: { code: 'stolen', state: '' } }, stolen);
+      assert.strictEqual(stolen.statusCode, 400, 'stolen code without state is rejected');
+      const unknown = mockRes();
+      await discord._handleOAuthCallback({ query: { code: 'stolen', state: 'ab'.repeat(32) } }, unknown);
+      assert.strictEqual(unknown.statusCode, 400, 'unknown state is rejected');
+      const okState = mockRes();
+      await discord._handleOAuthCallback({ query: { code: 'stolen', state } }, okState);
+      assert.strictEqual(okState.statusCode, 501, 'do not exchange codes yet');
+      assert.strictEqual(okState.body && okState.body.status, 'error');
+      const replay = mockRes();
+      await discord._handleOAuthCallback({ query: { code: 'stolen', state } }, replay);
+      assert.strictEqual(replay.statusCode, 400, 'state is one-time');
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }
@@ -133,23 +144,29 @@ describe('Discord', function () {
       const { ChannelType } = require('discord.js');
       const discord = new Discord({ autoCommands: false });
       const seen = [];
+      const debugLines = [];
       discord.on('activity', (activity) => seen.push(activity));
+      discord.on('debug', (line) => debugLines.push(String(line)));
       await discord._handleClientMessage({
         author: { bot: false, id: 'u1', username: 'pilot' },
         channel: { id: 'c-dm', type: ChannelType.DM, name: undefined },
         id: 'm1',
-        content: 'hello',
+        content: 'secret-dm-body',
         createdTimestamp: 1
       });
       await discord._handleClientMessage({
         author: { bot: false, id: 'u1', username: 'pilot' },
         channel: { id: 'c-text', type: ChannelType.GuildText, name: 'general' },
         id: 'm2',
-        content: 'hello',
+        content: 'secret-guild-body',
         createdTimestamp: 2
       });
       assert.strictEqual(seen[0].target.type, 'dm');
       assert.strictEqual(seen[1].target.type, 'text');
+      const joined = debugLines.join('\n');
+      assert.ok(!joined.includes('secret-dm-body'));
+      assert.ok(!joined.includes('secret-guild-body'));
+      assert.ok(!joined.includes('pilot:'));
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }

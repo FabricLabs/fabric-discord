@@ -1,10 +1,16 @@
 'use strict';
 
 // Dependencies
+const crypto = require('crypto');
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
 const { Client, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
+
+/** @private */
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+/** @private */
+const OAUTH_STATE_MAX = 64;
 
 
 // Fabric Types
@@ -126,6 +132,7 @@ class Discord extends Service {
     this._onClientReady = this._onClientReady.bind(this);
     this._clientDestroyed = false;
     this._voiceCommitTimer = null;
+    this._oauthStates = new Map();
 
     // discord.js Client — intents only (token via login()).
     this.client = this._createClient();
@@ -308,10 +315,8 @@ class Discord extends Service {
 
     const now = (new Date()).toISOString();
     const isDm = message.channel.type === ChannelType.DM;
-    // Do not write DM bodies / usernames at default log verbosity.
-    this.emit('debug', isDm
-      ? `${now} discord dm from ${message.author.id} (${String(message.content || '').length} chars)`
-      : `${now} ${message.author.username}: ${message.content}`);
+    // Do not write bodies or usernames at default log verbosity (DMs or guild).
+    this.emit('debug', `${now} discord ${isDm ? 'dm' : 'message'} from ${message.author.id} (${String(message.content || '').length} chars)`);
 
     // ## Fabric API
     // Interact with the Fabric network using a local, message-based API.
@@ -364,15 +369,46 @@ class Discord extends Service {
     }
   }
 
+  _pruneOAuthStates (now = Date.now()) {
+    for (const [token, createdAt] of this._oauthStates) {
+      if (now - createdAt > OAUTH_STATE_TTL_MS) this._oauthStates.delete(token);
+    }
+    while (this._oauthStates.size >= OAUTH_STATE_MAX) {
+      const oldest = this._oauthStates.keys().next().value;
+      this._oauthStates.delete(oldest);
+    }
+  }
+
+  _rememberOAuthState (token) {
+    this._pruneOAuthStates();
+    this._oauthStates.set(token, Date.now());
+    return token;
+  }
+
+  _consumeOAuthState (token) {
+    if (!token || typeof token !== 'string') return false;
+    this._pruneOAuthStates();
+    const createdAt = this._oauthStates.get(token);
+    if (createdAt == null) return false;
+    this._oauthStates.delete(token);
+    return Date.now() - createdAt <= OAUTH_STATE_TTL_MS;
+  }
+
   async _handleOAuthCallback (req, res) {
-    // Fail closed: no `state` + no code exchange yet. Do not claim success.
+    const query = (req && req.query) || {};
+    const state = typeof query.state === 'string' ? query.state.trim() : '';
+    const validState = this._consumeOAuthState(state);
+    // Fail closed: CSRF `state` is required; code exchange is still not implemented.
     const payload = {
       status: 'error',
-      message: 'Discord OAuth callback is not implemented'
+      message: validState
+        ? 'Discord OAuth callback is not implemented'
+        : 'Discord OAuth callback rejected (missing or invalid state)'
     };
+    const code = validState ? 501 : 400;
     if (res && typeof res.status === 'function') {
-      if (typeof res.json === 'function') return res.status(501).json(payload);
-      return res.status(501).send(payload.message);
+      if (typeof res.json === 'function') return res.status(code).json(payload);
+      return res.status(code).send(payload.message);
     }
     if (res && typeof res.send === 'function') return res.send(payload.message);
   }
@@ -622,12 +658,14 @@ class Discord extends Service {
 
   generateAuthorizeLink () {
     const scheme = this.settings.secure ? 'https' : 'http';
+    const state = this._rememberOAuthState(crypto.randomBytes(32).toString('hex'));
     const params = qs.encode({
       client_id: this.settings.app.id,
       permissions: 0,
       redirect_uri: `${scheme}://${this.settings.authority}/services/discord/authorize`,
       scope: ['identify'].join(' '),
-      response_type: 'code'
+      response_type: 'code',
+      state
     });
 
     return `https://discord.com/oauth2/authorize?${params}`;

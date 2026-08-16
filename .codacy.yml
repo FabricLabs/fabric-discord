@@ -1,0 +1,12 @@
+# Codacy — lockfile CVEs stay in AUDIT.md; Vale on SECURITY.md must not gate RSI.
+# https://docs.codacy.com/repositories-configure/codacy-configuration-file/
+---
+engines:
+  remark-lint:
+    enabled: false
+exclude_paths:
+  - "reports/**"
+  - "docs/**"
+  - "package-lock.json"
+  - "SECURITY.md"
+  - "AUDIT.md"
