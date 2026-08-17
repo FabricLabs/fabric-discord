@@ -22,7 +22,7 @@ A **webhook URL** authorizes posting through that webhook only. Never commit any
 **Basics coverage:** [`tests/adversarialEnvironment.basics.test.js`](tests/adversarialEnvironment.basics.test.js).
 
 ## Outstanding (PR #2 / RSI follow-ups)
-- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`. Lockfile Git commit SHA **`f1b5e147d6d48a7689701527a55d1829227529b5`** ([#185](https://github.com/FabricLabs/fabric/pull/185)). `report:install` refreshes the lockfile after an upstream RSI (`feature/rsi`) push (`npm i --allow-git=all`). Re-pin releases to that lockfile SHA.
+- ~~**`@fabric/core` pin hygiene**~~ — `package.json` stays on `FabricLabs/fabric#feature/rsi`. Lockfile Git commit SHA **`9938917804e2bf5ba5cf1fab7bf0975129d9063f`** ([#185](https://github.com/FabricLabs/fabric/pull/185)). `report:install` removes `package-lock.json` then `npm i --allow-git=all`. Re-pin releases to that lockfile SHA.
 - ~~**OAuth fetch fail-closed**~~ — `exchangeCodeForToken` / `getTokenUser` throw on network / non-OK responses (no swallowed `.catch` + `.then` on `undefined`).
 - ~~**OAuth redirect scheme**~~ — `exchangeCodeForToken` / `generateAuthorizeLink` use `settings.secure` for the hub `redirect_uri` scheme; Discord authorize endpoints stay on `https://discord.com`.
 - ~~**OAuth scope delimiter**~~ — authorize / application links join scopes with spaces (Discord OAuth2).
@@ -44,7 +44,7 @@ A **webhook URL** authorizes posting through that webhook only. Never commit any
 1. `npm test` before merging token / OAuth / message-bridge changes.
 2. Prefer env / local settings for bot tokens; never log the raw token.
 3. Align with `@fabric/core` SECURITY.md when upgrading Fabric deps.
-4. Normal install is **`npm ci`**. `npm run report:install` is the RSI lockfile refresh (wipes `package-lock.json`, then `npm i --allow-git=all`). Commit the regenerated lockfile and verify the `@fabric/core` resolved Git commit SHA before merge or release.
+4. Normal install is **`npm ci`**. `npm run report:install` is the RSI lockfile refresh (removes `package-lock.json`, then `npm i --allow-git=all`). Commit the regenerated lockfile and verify the `@fabric/core` resolved Git commit SHA before merge or release.
 
 ## Disclosure
 Canonical monitored contact: **`security@fabric.pub`**. GitHub Security Advisories are the alternate private channel.

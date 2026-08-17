@@ -166,7 +166,7 @@ describe('Discord', function () {
       const joined = debugLines.join('\n');
       assert.ok(!joined.includes('secret-dm-body'));
       assert.ok(!joined.includes('secret-guild-body'));
-      assert.ok(!joined.includes('pilot:'));
+      assert.ok(!joined.includes('pilot'));
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }

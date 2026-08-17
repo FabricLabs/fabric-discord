@@ -1,11 +1,11 @@
 # Fabric Discord Security Audit
 Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dependency changes; keep this file aligned with the current lockfile.
 
-## Status (2026-08-15)
+## Status (2026-08-16)
 
 | Area | Posture |
 |------|---------|
-| `@fabric/core` | Git pin `FabricLabs/fabric#feature/rsi` (lockfile Git commit SHA `f1b5e147d6d48a7689701527a55d1829227529b5`, [#185](https://github.com/FabricLabs/fabric/pull/185)) |
+| `@fabric/core` | Git pin `FabricLabs/fabric#feature/rsi` (lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`, [#185](https://github.com/FabricLabs/fabric/pull/185)) |
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
 | Node | **`engines.node` = `24.15.0`** |
 | discord.js | **`14.18.0`** (deprecated upstream line; bump is a separate product decision) |
@@ -22,7 +22,7 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 
 ## Recommendations
 
-1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` wipes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to lockfile Git commit SHA `f1b5e147d6d48a7689701527a55d1829227529b5`. This pin already resolves `ws@8.21.3` (the old `ws` high via jayson is gone). Remaining highs are mocha `serialize-javascript` (dev) and discord.js `undici`. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
+1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`. This pin already resolves `ws@8.21.3` (the old `ws` high via jayson is gone). Remaining highs are mocha `serialize-javascript` (dev) and discord.js `undici`. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
 2. Do not run **`npm audit fix --force`** — it will fight discord.js / mocha pins.
 3. Revisit discord.js when consumers can take a current major together.
 
@@ -49,6 +49,10 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 | OAuth CSRF `state` | Fixed — authorize URL + consume-once; missing/unknown/replayed is 400 |
 | OAuth code exchange | Open — callback still 501 after valid `state` (heavy lift) |
 | Voice flag `commit()` volume | Fixed — session transitions persist immediately; flag toggles debounce 5s |
+| DM debug username leak test | Fixed — asserts debug lines omit username, not only `username:` |
+| `report:install` blank lockfile | Fixed — `rm -f package-lock.json` (wipe kept; echo-newline was a no-op wipe) |
+| `.codacy.yml` `engines.enabled` | Fixed — Codacy CLI ignores tool toggles; exclusions kept |
+| GitHub mocha CI | Open — Codacy only; no `.github/workflows` |
 | Large WIP split | Open — process |
 
 ## Disclosure

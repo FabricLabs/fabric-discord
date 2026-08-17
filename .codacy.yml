@@ -1,9 +1,7 @@
 # Codacy — lockfile CVEs stay in AUDIT.md; Vale on SECURITY.md must not gate RSI.
 # https://docs.codacy.com/repositories-configure/codacy-configuration-file/
+# Disable remark-lint in Codacy Code patterns (`.codacy.yml` cannot toggle tools).
 ---
-engines:
-  remark-lint:
-    enabled: false
 exclude_paths:
   - "reports/**"
   - "docs/**"
