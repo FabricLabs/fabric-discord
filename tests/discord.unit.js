@@ -163,10 +163,73 @@ describe('Discord', function () {
       });
       assert.strictEqual(seen[0].target.type, 'dm');
       assert.strictEqual(seen[1].target.type, 'text');
+      assert.strictEqual(seen[0].object.created, 1);
+      assert.strictEqual(seen[1].object.created, 2);
       const joined = debugLines.join('\n');
       assert.ok(!joined.includes('secret-dm-body'));
       assert.ok(!joined.includes('secret-guild-body'));
       assert.ok(!joined.includes('pilot'));
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
+
+    it('never stamps non-positive activity created (Number(null)===0)', async function () {
+      const { ChannelType } = require('discord.js');
+      const discord = new Discord({ autoCommands: false });
+      const seen = [];
+      discord.on('activity', (activity) => seen.push(activity));
+      const before = Date.now();
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: { id: 'c1', type: ChannelType.GuildText, name: 'general' },
+        id: 'm0',
+        content: 'hi',
+        createdTimestamp: null
+      });
+      const after = Date.now();
+      assert.ok(seen[0].object.created >= before && seen[0].object.created <= after);
+      assert.strictEqual(Discord.positiveCreatedMs(0), Discord.positiveCreatedMs(0));
+      assert.ok(Discord.positiveCreatedMs(0) > 0);
+      assert.strictEqual(Discord.positiveCreatedMs(42), 42);
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
+
+    it('trims blank channel / app credentials like tokens', async function () {
+      const discord = new Discord({
+        channel: '  ',
+        app: { id: '  ', secret: '\t' }
+      });
+      assert.strictEqual(discord.settings.channel, null);
+      assert.strictEqual(discord.settings.app.id, null);
+      assert.strictEqual(discord.settings.app.secret, null);
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
+
+    it('!sync awaits sync and replies instead of returning a bare Promise', async function () {
+      const { ChannelType } = require('discord.js');
+      const discord = new Discord({ autoCommands: true });
+      let synced = 0;
+      const replies = [];
+      discord.sync = async function () { synced += 1; return this; };
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: {
+          id: 'c1',
+          type: ChannelType.GuildText,
+          name: 'general',
+          send: async (msg) => { replies.push(msg); return msg; }
+        },
+        id: 'm-sync',
+        content: '!sync',
+        createdTimestamp: 99
+      });
+      assert.strictEqual(synced, 1);
+      assert.strictEqual(replies[0], 'Synced.');
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }

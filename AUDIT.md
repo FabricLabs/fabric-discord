@@ -47,6 +47,11 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 | Instantiable unit test | Fixed — constructs + destroys client |
 | Activity `target.type` | Fixed — legacy `'dm'` / `'text'` / `'news'` strings (not numeric ChannelType) |
 | OAuth CSRF `state` | Fixed — authorize URL + consume-once; missing/unknown/replayed is 400 |
+| Activity `object.created` | Fixed — reject non-positive (`Number(null)` / `''` → epoch 0) |
+| `!sync` bare Promise | Fixed — await `sync()` + channel reply |
+| OAuth / channel `console.error` | Fixed — emit `error` events |
+| Blank `channel` / app id/secret | Fixed — trim like token |
+| `voiceChannelStats` package export | Fixed — `./functions/voiceChannelStats` |
 | OAuth code exchange | Open — callback still 501 after valid `state` (heavy lift) |
 | Voice flag `commit()` volume | Fixed — session transitions persist immediately; flag toggles debounce 5s |
 | DM debug username leak test | Fixed — asserts debug lines omit username, not only `username:` |

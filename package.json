@@ -6,11 +6,12 @@
   "exports": {
     ".": "./services/discord.js",
     "./services/discord": "./services/discord.js",
-    "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js"
+    "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js",
+    "./functions/voiceChannelStats": "./functions/voiceChannelStats.js"
   },
   "scripts": {
     "report:install": "rm -rf node_modules && mkdir -p reports && rm -f package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
-    "test": "mocha tests --extension js --exit"
+    "test": "NODE_ENV=test mocha tests --extension js --exit"
   },
   "repository": {
     "type": "git",
@@ -28,7 +29,8 @@
   },
   "homepage": "https://github.com/FabricLabs/fabric-discord#readme",
   "engines": {
-    "node": "24.15.0"
+    "node": "24.15.0",
+    "npm": ">=12.0.0"
   },
   "dependencies": {
     "@fabric/core": "github:FabricLabs/fabric#feature/rsi",

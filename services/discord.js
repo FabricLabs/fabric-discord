@@ -50,6 +50,17 @@ function legacyActivityChannelType (channelType) {
 }
 
 /**
+ * Positive epoch ms for Activity Stream `object.created`.
+ * `Number(null)` / `Number('')` are a finite 0 — same class of bug as Hub/http chat.
+ * @param {unknown} value
+ * @returns {number}
+ */
+function positiveCreatedMs (value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : Date.now();
+}
+
+/**
  * Discord service for Fabric.
  */
 class Discord extends Service {
@@ -111,6 +122,20 @@ class Discord extends Service {
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;
+    }
+    if (this.settings.channel != null) {
+      const trimmed = String(this.settings.channel).trim();
+      this.settings.channel = trimmed || null;
+    }
+    if (this.settings.app && typeof this.settings.app === 'object') {
+      if (this.settings.app.id != null) {
+        const trimmed = String(this.settings.app.id).trim();
+        this.settings.app.id = trimmed || null;
+      }
+      if (this.settings.app.secret != null) {
+        const trimmed = String(this.settings.app.secret).trim();
+        this.settings.app.secret = trimmed || null;
+      }
     }
 
     this.slashCommands = {
@@ -339,7 +364,7 @@ class Discord extends Service {
       object: {
         id: message.id,
         content: message.content,
-        created: message.createdTimestamp
+        created: positiveCreatedMs(message.createdTimestamp)
       },
       target: {
         id: target.id,
@@ -365,7 +390,8 @@ class Discord extends Service {
     }
 
     if (message.content === '!sync') {
-      return this.sync();
+      await this.sync();
+      return message.channel.send('Synced.');
     }
   }
 
@@ -536,7 +562,7 @@ class Discord extends Service {
         body: qs.encode(params)
       });
     } catch (exception) {
-      console.error('Could not fetch token:', exception);
+      this.emit('error', `Could not fetch Discord OAuth token: ${exception}`);
       throw exception;
     }
     if (!response || !response.ok) {
@@ -555,7 +581,7 @@ class Discord extends Service {
         }
       });
     } catch (exception) {
-      console.error('Could not fetch user:', exception);
+      this.emit('error', `Could not fetch Discord OAuth user: ${exception}`);
       throw exception;
     }
     if (!response || !response.ok) {
@@ -635,7 +661,7 @@ class Discord extends Service {
     try {
       channel = await this.client.channels.fetch(channelID);
     } catch (error) {
-      console.error('Could not fetch channel:', error);
+      this.emit('error', `Could not fetch Discord channel: ${error}`);
       throw error;
     }
     if (!channel) throw new Error('Channel not found.');
@@ -673,5 +699,6 @@ class Discord extends Service {
 }
 
 Discord.legacyActivityChannelType = legacyActivityChannelType;
+Discord.positiveCreatedMs = positiveCreatedMs;
 
 module.exports = Discord;
