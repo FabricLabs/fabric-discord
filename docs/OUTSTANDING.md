@@ -1,8 +1,9 @@
 # Outstanding (security-first)
 Living queue for this repo. Detail: [SECURITY.md](../SECURITY.md). Suite march: [@fabric/core `docs/PRODUCTION_MARCH.md`](https://github.com/FabricLabs/fabric/blob/feature/rsi/docs/PRODUCTION_MARCH.md).
 
-**Last reviewed:** 2026-08-25 (core lockfile tip on `feature/rsi`; next pin
-[#186](https://github.com/FabricLabs/fabric/pull/186)).
+**Last reviewed:** 2026-08-25 — `@fabric/core` lockfile **`88f766c28`**
+([#186](https://github.com/FabricLabs/fabric/pull/186) NOISE handshake-bus).
+Re-pin after Wave 1 core honesty lands on a new tip.
 
 ## Blockers before public OAuth
 1. **OAuth code exchange** — `_handleOAuthCallback` still returns **501** after a valid one-time `state` (no token exchange). `generateAuthorizeLink` now emits 64-hex CSRF `state` (TTL 10m, cap 64, consume-once). Stolen `code` without / with unknown `state` is **400**. Do not expose `/services/discord/authorize` on a public hub until code exchange lands.
