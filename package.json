@@ -3,12 +3,21 @@
   "version": "0.1.0-dev",
   "description": "Discord connectivity for Fabric agents.",
   "main": "services/discord.js",
+  "exports": {
+    ".": "./services/discord.js",
+    "./services/discord": "./services/discord.js",
+    "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js",
+    "./functions/voiceChannelStats": "./functions/voiceChannelStats.js",
+    "./functions/discordCatalog": "./functions/discordCatalog.js",
+    "./functions/discordStateAccumulate": "./functions/discordStateAccumulate.js"
+  },
   "scripts": {
-    "test": "mocha tests"
+    "report:install": "rm -rf node_modules && mkdir -p reports && rm -f package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
+    "test": "NODE_ENV=test mocha tests --extension js --exit"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FabricLabs/fabric-service-discord.git"
+    "url": "git+https://github.com/FabricLabs/fabric-discord.git"
   },
   "keywords": [
     "fabric",
@@ -18,12 +27,20 @@
   "author": "Fabric Labs",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/FabricLabs/fabric-service-discord/issues"
+    "url": "https://github.com/FabricLabs/fabric-discord/issues"
   },
-  "homepage": "https://github.com/FabricLabs/fabric-service-discord#readme",
+  "homepage": "https://github.com/FabricLabs/fabric-discord#readme",
+  "engines": {
+    "node": "24.15.0",
+    "npm": ">=12.0.0"
+  },
   "dependencies": {
-    "@fabric/core": "FabricLabs/fabric#master",
-    "discord.js": "^12.5.3",
-    "lodash.merge": "^4.6.2"
+    "@fabric/core": "github:FabricLabs/fabric#feature/rsi",
+    "cross-fetch": "=4.0.0",
+    "discord.js": "=14.18.0",
+    "lodash.merge": "=4.6.2"
+  },
+  "devDependencies": {
+    "mocha": "=11.1.0"
   }
 }
