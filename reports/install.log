@@ -4,12 +4,12 @@ npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For E
 npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 npm warn deprecated discord.js@14.18.0: This version is deprecated. Please use a newer version
 
-added 276 packages, and audited 277 packages in 13s
+added 276 packages, and audited 277 packages in 24s
 
 52 packages are looking for funding
   run `npm fund` for details
 
-7 vulnerabilities (5 moderate, 2 high)
+8 vulnerabilities (6 moderate, 2 high)
 
 To address all issues possible (including breaking changes), run:
   npm audit fix --force

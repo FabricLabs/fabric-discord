@@ -11,8 +11,12 @@ Re-pin after Wave 1 core honesty lands on a new tip.
 
 ## Next slices
 - [ ] discord.js 14.18 is a deprecated line — coordinated consumer bump later (GoonCitizen).
+- [x] Catalog / state accumulate APIs for Sensemaker + GoonCitizen — `functions/discordCatalog.js`, `functions/discordStateAccumulate.js`; service `buildCatalog` / `toCatalog` / `refreshCaches` / `getVoiceSnapshot` / `listGuildSummaries` / `listUserSummaries`; union-merge sync + message observation fold into `content.users`.
+- [ ] Optional: GoonCitizen re-export / collapse local `discordGuildCatalog` serialize helpers onto `@fabric/discord/functions/discordCatalog` when pin bumps (keep bot permission chips local).
+- [ ] Optional: Sensemaker HTTP routes prefer `discord.listGuildSummaries()` / `getVoiceSnapshot()` over raw `client.*.cache`.
 
 ## Closed this cut
+- Catalog / state accumulate APIs (2026-09-06): `discordCatalog` + `discordStateAccumulate` leaves; service `buildCatalog` / `toCatalog` / `refreshCaches` / `getVoiceSnapshot` / `listGuildSummaries` / `listUserSummaries`; union-merge sync; message fold into `content.users`. Package exports for both leaves.
 - Activity `object.created` rejects non-positive timestamps (`Number(null)` / `''` → epoch 0). Helper: `Discord.positiveCreatedMs`.
 - `!sync` awaits `sync()` and replies `Synced.` (was returning a bare Promise with no channel reply).
 - OAuth / channel fetch failures emit `error` instead of bare `console.error`.

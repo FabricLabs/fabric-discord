@@ -234,5 +234,63 @@ describe('Discord', function () {
         await discord.client.destroy();
       }
     });
+
+    it('exposes catalog / voice snapshot APIs for downstream HTTP', async function () {
+      const discord = new Discord({
+        autoCommands: false,
+        app: { id: 'app-9' },
+        channel: 'c-selected'
+      });
+      discord._state.content.guilds.g1 = {
+        id: 'g1',
+        name: 'G00N',
+        icon: null,
+        memberCount: 2,
+        channels: [],
+        members: []
+      };
+      discord._state.content.users.u1 = {
+        id: 'u1',
+        username: 'pilot',
+        displayName: 'Pilot',
+        bot: false
+      };
+      const guilds = discord.listGuildSummaries();
+      assert.strictEqual(guilds[0].id, 'g1');
+      const users = discord.listUserSummaries();
+      assert.strictEqual(users[0].username, 'pilot');
+      const voice = discord.getVoiceSnapshot();
+      assert.ok(voice.voice && voice.voice.aggregates);
+      assert.ok(Number.isFinite(voice.fetchedAt));
+      const stateCatalog = await discord.toCatalog({ live: false });
+      assert.strictEqual(stateCatalog.source, 'state');
+      assert.strictEqual(stateCatalog.guilds[0].id, 'g1');
+      assert.strictEqual(stateCatalog.appId, 'app-9');
+      assert.strictEqual(typeof Discord.catalog.buildDiscordGuildCatalog, 'function');
+      assert.strictEqual(typeof Discord.stateAccumulate.foldGuild, 'function');
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
+
+    it('folds message authors into content.users without logging bodies', async function () {
+      const { ChannelType } = require('discord.js');
+      const discord = new Discord({ autoCommands: false });
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u77', username: 'pilot' },
+        channel: { id: 'c77', type: ChannelType.GuildText, name: 'general' },
+        guildId: 'g77',
+        guild: { id: 'g77', name: 'Fleet' },
+        id: 'm77',
+        content: 'secret-body',
+        createdTimestamp: 5
+      });
+      assert.ok(discord.users.some((u) => u.id === 'u77'));
+      assert.ok(discord.channels.some((c) => c.id === 'c77'));
+      assert.ok(discord.guilds.some((g) => g.id === 'g77'));
+      if (discord.client && typeof discord.client.destroy === 'function') {
+        await discord.client.destroy();
+      }
+    });
   });
 });

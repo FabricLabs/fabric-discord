@@ -7,7 +7,9 @@
     ".": "./services/discord.js",
     "./services/discord": "./services/discord.js",
     "./functions/normalizeDiscordSettings": "./functions/normalizeDiscordSettings.js",
-    "./functions/voiceChannelStats": "./functions/voiceChannelStats.js"
+    "./functions/voiceChannelStats": "./functions/voiceChannelStats.js",
+    "./functions/discordCatalog": "./functions/discordCatalog.js",
+    "./functions/discordStateAccumulate": "./functions/discordStateAccumulate.js"
   },
   "scripts": {
     "report:install": "rm -rf node_modules && mkdir -p reports && rm -f package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
