@@ -102,6 +102,20 @@ describe('metrics pipeline', function () {
     assert.ok(!bits.includes(GatewayIntentBits.GuildMembers));
   });
 
+  it('retains all day buckets by default and prunes only when retentionDays is set', function () {
+    const DAY = 24 * HOUR;
+    const old = dayKey(T0 - 400 * DAY);
+    for (const factory of [voiceActivity, messageActivity]) {
+      for (const [options, kept] of [[{}, true], [{ retentionDays: 90 }, false]]) {
+        const plugin = factory(options);
+        const state = Object.assign(plugin.init(), { operations: { alpha: { days: { [old]: {}, [dayKey(T0)]: {} } } } });
+        plugin.on.tick({}, { state, now: T0 });
+        assert.strictEqual(old in state.operations.alpha.days, kept, `${plugin.name} ${JSON.stringify(options)}`);
+        assert.ok(dayKey(T0) in state.operations.alpha.days);
+      }
+    }
+  });
+
   it('credits voice time, sessions, members, and peak per operation', async function () {
     const p = await pipeline();
     voice('u1', null, ALPHA_VOICE, 'ALPHA SQUADRON');

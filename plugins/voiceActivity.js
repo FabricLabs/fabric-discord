@@ -22,11 +22,11 @@ const HOUR_MS = 60 * 60 * 1000;
  * State: `{ open: { '<guild>:<user>': { guildId, channelId, channelName, since } },
  *           operations: { <id>: { totalMemberMs, sessions, days: { YYYY-MM-DD: { memberMs, sessions, peak, members } } } } }`
  * @param {Object} [options]
- * @param {number} [options.retentionDays] day buckets kept (default 90)
+ * @param {number} [options.retentionDays] day buckets kept (default: all history)
  * @returns {Object} metrics plugin
  */
 function voiceActivity (options = {}) {
-  const retentionDays = options.retentionDays || 90;
+  const retentionDays = options.retentionDays || 0;
 
   function operationState (state, id) {
     if (!state.operations[id]) state.operations[id] = { totalMemberMs: 0, sessions: 0, days: {} };
