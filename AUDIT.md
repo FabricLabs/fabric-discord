@@ -9,20 +9,20 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
 | Node | **`engines.node` = `26.12.1`** (`.nvmrc`, same as the rest of the suite) |
 | discord.js | **`14.18.0`** (deprecated upstream line; bump is a separate product decision) |
-| npm audit (this tree) | **7** (5 moderate, 2 high) after the `#185` pin — see residual |
+| Test tooling | **`mocha@12.0.3`** (same as core / Hub); `cross-fetch@4.1.0` matches core |
+| npm audit (this tree) | **2** (1 moderate, 1 high) — both discord.js 14.18 (`undici`); see residual |
 
 ## Residual (accepted)
 
 | Package | Severity | Notes |
 |---------|----------|-------|
 | `undici` (via discord.js / `@discordjs/rest`) | high / moderate | Unbounded decompression. Tied to discord.js 14.18; do not `audit fix --force`. |
-| `serialize-javascript` (mocha) | high | Dev-only (test runner). |
 | `uuid` (jayson) | moderate | Same class as Hub; core already overrides `uuid@11.1.1` in some trees. |
 | `discord.js@14.18.0` | deprecation | Stay until a coordinated consumer bump. |
 
 ## Recommendations
 
-1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`. This pin already resolves `ws@8.21.3` (the old `ws` high via jayson is gone). Remaining highs are mocha `serialize-javascript` (dev) and discord.js `undici`. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
+1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`. This pin already resolves `ws@8.21.3` (the old `ws` high via jayson is gone). The remaining high is discord.js `undici`. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
 2. Do not run **`npm audit fix --force`** — it will fight discord.js / mocha pins.
 3. Revisit discord.js when consumers can take a current major together.
 
