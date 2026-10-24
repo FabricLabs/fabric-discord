@@ -7,7 +7,7 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 |------|---------|
 | `@fabric/core` | Git pin `FabricLabs/fabric#feature/rsi` (lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`, [#185](https://github.com/FabricLabs/fabric/pull/185)) |
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
-| Node | **`engines.node` = `24.15.0`** |
+| Node | **`engines.node` = `26.12.1`** (`.nvmrc`, same as the rest of the suite) |
 | discord.js | **`14.18.0`** (deprecated upstream line; bump is a separate product decision) |
 | npm audit (this tree) | **7** (5 moderate, 2 high) after the `#185` pin — see residual |
 
