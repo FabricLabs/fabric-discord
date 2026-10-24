@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, Events, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials, SlashCommandBuilder, ChannelType } = require('discord.js');
 
 /** @private */
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -64,6 +64,20 @@ function legacyActivityChannelType (channelType) {
     default:
       return channelType;
   }
+}
+
+/**
+ * discord.js `Partials` for a settings list of names (`'Channel'`) or values.
+ * Unknown entries are dropped.
+ * @param {Array<string|number>} list
+ * @returns {number[]}
+ */
+function partialsFrom (list) {
+  if (!Array.isArray(list)) return [];
+  const values = list
+    .map((entry) => (typeof entry === 'number' ? entry : Partials[entry]))
+    .filter((value) => Object.values(Partials).includes(value));
+  return Array.from(new Set(values));
 }
 
 /**
@@ -136,6 +150,7 @@ class Discord extends Service {
     if (Array.isArray(settings.intents)) this.settings.intents = settings.intents.slice();
     if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
     if (Array.isArray(settings.alerts)) this.settings.alerts = settings.alerts.slice();
+    if (Array.isArray(settings.partials)) this.settings.partials = settings.partials.slice();
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;
@@ -277,10 +292,34 @@ class Discord extends Service {
     return this.postToChannel(channelId, msg);
   }
 
+  /**
+   * Direct message one user. Accepts a string or a discord.js message payload.
+   * discord.js errors pass through unchanged (code 50007: the user does not
+   * accept DMs from this bot), so callers can tell the person.
+   * @param {string} userID
+   * @param {string|object} msg
+   * @returns {Promise<object>} The sent message.
+   */
+  async sendDirect (userID, msg) {
+    const id = String(userID || '').trim();
+    if (!id) throw new Error('Discord user id required');
+    if (!this.client || !this.client.isReady || !this.client.isReady()) {
+      throw new Error('Discord client is not ready');
+    }
+    const user = await this.client.users.fetch(id);
+    const payload = (typeof msg === 'string')
+      ? { content: msg }
+      : (msg && typeof msg === 'object' ? msg : { content: String(msg) });
+    return user.send(payload);
+  }
+
   _createClient () {
-    return new Client({
+    const options = {
       intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
-    });
+    };
+    const partials = partialsFrom(this.settings.partials);
+    if (partials.length) options.partials = partials;
+    return new Client(options);
   }
 
   _attachClientListeners () {
@@ -944,6 +983,7 @@ class Discord extends Service {
 }
 
 Discord.legacyActivityChannelType = legacyActivityChannelType;
+Discord.partialsFrom = partialsFrom;
 Discord.positiveCreatedMs = positiveCreatedMs;
 Discord.catalog = require('../functions/discordCatalog');
 Discord.stateAccumulate = require('../functions/discordStateAccumulate');

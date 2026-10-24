@@ -30,6 +30,47 @@ describe('Discord', function () {
       }
     });
 
+    it('passes partials to the discord.js client by name', async function () {
+      const { Partials } = require('discord.js');
+      assert.deepStrictEqual(Discord.partialsFrom(['Channel', 'Nope', Partials.Message, 'Channel']), [Partials.Channel, Partials.Message]);
+      assert.deepStrictEqual(Discord.partialsFrom(undefined), []);
+      const discord = new Discord({ partials: ['Channel'] });
+      const client = discord._createClient();
+      assert.ok(client.options.partials.includes(Partials.Channel));
+      await client.destroy();
+      const plain = new Discord()._createClient();
+      assert.ok(!(plain.options.partials || []).includes(Partials.Channel));
+      await plain.destroy();
+    });
+
+    it('sends direct messages and passes discord.js refusals through', async function () {
+      const discord = new Discord();
+      const sent = [];
+      let ready = false;
+      discord.client = {
+        isReady: () => ready,
+        users: {
+          fetch: async (id) => ({
+            send: async (payload) => {
+              if (id === 'closed') throw Object.assign(new Error('Cannot send messages to this user'), { code: 50007 });
+              sent.push({ id, payload });
+              return { id: 'm1' };
+            }
+          })
+        }
+      };
+      await assert.rejects(discord.sendDirect('u1', 'hi'), /not ready/);
+      ready = true;
+      await assert.rejects(discord.sendDirect('', 'hi'), /user id required/);
+      assert.deepStrictEqual(await discord.sendDirect('u1', 'hi'), { id: 'm1' });
+      await discord.sendDirect('u2', { content: 'card', components: [] });
+      assert.deepStrictEqual(sent, [
+        { id: 'u1', payload: { content: 'hi' } },
+        { id: 'u2', payload: { content: 'card', components: [] } }
+      ]);
+      await assert.rejects(discord.sendDirect('closed', 'hi'), (error) => error.code === 50007);
+    });
+
     it('joins OAuth scopes with spaces', async function () {
       const discord = new Discord({ app: { id: '123' }, authority: 'localhost:3040' });
       const authorize = new URL(discord.generateAuthorizeLink());

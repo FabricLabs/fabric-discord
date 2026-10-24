@@ -41,7 +41,7 @@
     "npm": ">=12.0.0"
   },
   "dependencies": {
-    "@fabric/core": "FabricLabs/fabric#feature/channels",
+    "@fabric/core": "FabricLabs/fabric#feature/markets",
     "cross-fetch": "=4.1.0",
     "discord.js": "=14.27.0",
     "lodash.merge": "=4.6.2"
