@@ -10,7 +10,7 @@ Re-pin after Wave 1 core honesty lands on a new tip.
 2. Discord is a **third-party exfil** — mirrored chat is non-private. Never commit bot tokens / webhook URLs.
 
 ## Next slices
-- [ ] discord.js 14.18 is a deprecated line — coordinated consumer bump later (GoonCitizen).
+- [x] discord.js 14.27.0 (2026-10-24): clears the pinned `undici@6.21.1` advisories; client ready listener moved to `Events.ClientReady`. Consumers refresh their lockfiles.
 - [x] Catalog / state accumulate APIs for Sensemaker + GoonCitizen — `functions/discordCatalog.js`, `functions/discordStateAccumulate.js`; service `buildCatalog` / `toCatalog` / `refreshCaches` / `getVoiceSnapshot` / `listGuildSummaries` / `listUserSummaries`; union-merge sync + message observation fold into `content.users`.
 - [ ] Optional: GoonCitizen re-export / collapse local `discordGuildCatalog` serialize helpers onto `@fabric/discord/functions/discordCatalog` when pin bumps (keep bot permission chips local).
 - [ ] Optional: Sensemaker HTTP routes prefer `discord.listGuildSummaries()` / `getVoiceSnapshot()` over raw `client.*.cache`.

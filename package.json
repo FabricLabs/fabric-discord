@@ -43,7 +43,7 @@
   "dependencies": {
     "@fabric/core": "FabricLabs/fabric#feature/channels",
     "cross-fetch": "=4.1.0",
-    "discord.js": "=14.18.0",
+    "discord.js": "=14.27.0",
     "lodash.merge": "=4.6.2"
   },
   "devDependencies": {

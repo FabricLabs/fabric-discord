@@ -1,17 +1,11 @@
 $ npm i --allow-git=all
-npm warn deprecated discord.js@14.18.0: This version is deprecated. Please use a newer version
 
-added 164 packages, and audited 165 packages in 16s
+added 157 packages, and audited 158 packages in 13s
 
 32 packages are looking for funding
   run `npm fund` for details
 
-2 vulnerabilities (1 moderate, 1 high)
-
-To address all issues, run:
-  npm audit fix --force
-
-Run `npm audit` for details.
+found 0 vulnerabilities
 npm warn install-scripts 3 packages had install scripts blocked because they are not covered by allowScripts:
 npm warn install-scripts   @fabric/core@0.1.0 (install: node scripts/install-native.js)
 npm warn install-scripts   zeromq@6.8.0 (install: node ./script/install.js)

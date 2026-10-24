@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, Events, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
 
 /** @private */
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -285,7 +285,7 @@ class Discord extends Service {
 
   _attachClientListeners () {
     this.client.on('error', this._onClientError);
-    this.client.once('ready', this._onClientReady);
+    this.client.once(Events.ClientReady, this._onClientReady);
     this.client.on('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.on('messageCreate', this._onClientMessage);
   }
@@ -293,7 +293,7 @@ class Discord extends Service {
   _detachClientListeners () {
     if (!this.client) return;
     this.client.removeListener('error', this._onClientError);
-    this.client.removeListener('ready', this._onClientReady);
+    this.client.removeListener(Events.ClientReady, this._onClientReady);
     this.client.removeListener('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.removeListener('messageCreate', this._onClientMessage);
   }

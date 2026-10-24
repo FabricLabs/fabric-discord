@@ -1,30 +1,24 @@
 # Fabric Discord Security Audit
 Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dependency changes; keep this file aligned with the current lockfile.
 
-## Status (2026-08-16)
+## Status (2026-10-24)
 
 | Area | Posture |
 |------|---------|
-| `@fabric/core` | Git pin `FabricLabs/fabric#feature/rsi` (lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`, [#185](https://github.com/FabricLabs/fabric/pull/185)) |
+| `@fabric/core` | Git pin `FabricLabs/fabric#feature/channels` (lockfile Git commit SHA `1ba3b3cd0376858824c94ae17929eb2e77111a91`) |
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
 | Node | **`engines.node` = `26.12.1`** (`.nvmrc`, same as the rest of the suite) |
-| discord.js | **`14.18.0`** (deprecated upstream line; bump is a separate product decision) |
+| discord.js | **`14.27.0`** (from `14.18.0`, which pinned `undici@6.21.1` exactly: smuggling, CRLF injection, WebSocket DoS). Now `undici@6.29.1`. The client listens for `Events.ClientReady` (`clientReady`); the bare `ready` event is deprecated in 14.22+ and gone in v15. This service still emits its own `ready` |
 | Test tooling | **`mocha@12.0.3`** (same as core / Hub); `cross-fetch@4.1.0` matches core |
-| npm audit (this tree) | **2** (1 moderate, 1 high) — both discord.js 14.18 (`undici`); see residual |
+| npm audit (this tree) | **0** |
 
-## Residual (accepted)
-
-| Package | Severity | Notes |
-|---------|----------|-------|
-| `undici` (via discord.js / `@discordjs/rest`) | high / moderate | Unbounded decompression. Tied to discord.js 14.18; do not `audit fix --force`. |
-| `uuid` (jayson) | moderate | Same class as Hub; core already overrides `uuid@11.1.1` in some trees. |
-| `discord.js@14.18.0` | deprecation | Stay until a coordinated consumer bump. |
+Consumers (goon.vc, GoonCitizen, Doorman) inherit discord.js from this pin: npm `overrides` do not reach them, so each needs a lockfile refresh after this lands.
 
 ## Recommendations
 
-1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/rsi --allow-git=all`. Keep `package.json` on `#feature/rsi` during RSI; re-pin releases to lockfile Git commit SHA `9938917804e2bf5ba5cf1fab7bf0975129d9063f`. This pin already resolves `ws@8.21.3` (the old `ws` high via jayson is gone). The remaining high is discord.js `undici`. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
+1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/channels --allow-git=all`. Re-pin releases to the lockfile Git commit SHA. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
 2. Do not run **`npm audit fix --force`** — it will fight discord.js / mocha pins.
-3. Revisit discord.js when consumers can take a current major together.
+3. Keep discord.js on the newest 14.x; v15 is a coordinated consumer bump.
 
 ### PR #2 review triage (`feature/rsi`)
 
