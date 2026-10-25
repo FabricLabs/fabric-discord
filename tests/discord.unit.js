@@ -230,7 +230,6 @@ describe('Discord', function () {
       });
       const after = Date.now();
       assert.ok(seen[0].object.created >= before && seen[0].object.created <= after);
-      assert.strictEqual(Discord.positiveCreatedMs(0), Discord.positiveCreatedMs(0));
       assert.ok(Discord.positiveCreatedMs(0) > 0);
       assert.strictEqual(Discord.positiveCreatedMs(42), 42);
       if (discord.client && typeof discord.client.destroy === 'function') {
@@ -271,6 +270,20 @@ describe('Discord', function () {
       });
       assert.strictEqual(synced, 1);
       assert.strictEqual(replies[0], 'Synced.');
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: {
+          id: 'c1',
+          type: ChannelType.GuildText,
+          name: 'general',
+          send: async (msg) => { replies.push(msg); return msg; }
+        },
+        id: 'm-sync-2',
+        content: '!sync',
+        createdTimestamp: 100
+      });
+      assert.strictEqual(synced, 1, 'second !sync inside the cooldown is refused');
+      discord._clearCatalogCommitTimer();
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }

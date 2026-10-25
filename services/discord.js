@@ -11,6 +11,7 @@ const { Client, Events, GatewayIntentBits, Partials, SlashCommandBuilder, Channe
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 /** @private */
 const OAUTH_STATE_MAX = 64;
+const SYNC_COMMAND_COOLDOWN_MS = 60 * 1000;
 
 
 // Fabric Types
@@ -185,7 +186,12 @@ class Discord extends Service {
         this.emit('error', err);
       });
     };
-    this._onClientMessage = this._handleClientMessage.bind(this);
+    this._onClientMessage = (message) => {
+      this._handleClientMessage(message).catch((err) => {
+        this.emit('error', err);
+      });
+    };
+    this._lastCommandSyncAt = 0;
     this._onClientReady = this._onClientReady.bind(this);
     this._clientDestroyed = false;
     this._voiceCommitTimer = null;
@@ -485,6 +491,11 @@ class Discord extends Service {
     }
 
     if (message.content === '!sync') {
+      const at = Date.now();
+      if (at - this._lastCommandSyncAt < SYNC_COMMAND_COOLDOWN_MS) {
+        return message.channel.send('Synced recently; try again later.');
+      }
+      this._lastCommandSyncAt = at;
       await this.sync();
       return message.channel.send('Synced.');
     }

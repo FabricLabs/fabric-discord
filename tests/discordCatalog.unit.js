@@ -213,4 +213,17 @@ describe('discordStateAccumulate', function () {
     foldUser(content, { id: 'u1', username: 'a', displayName: 'Ace', bot: false });
     assert.strictEqual(content.users.u1.displayName, 'Ace');
   });
+
+  it('message observations keep stored nickname, roles, avatar, and status', function () {
+    const content = {};
+    const rich = { id: 'u1', username: 'ace', displayName: 'Ace Pilot', bot: false, status: 'online', avatar: 'av', roles: ['r1'] };
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [rich], memberCount: 1 });
+    foldMessageObservation(content, { guildId: 'g1', channelId: 'c1', authorId: 'u1', authorUsername: 'ace' });
+    for (const row of [content.users.u1, content.guilds.g1.members.find((m) => m.id === 'u1')]) {
+      assert.strictEqual(row.displayName, 'Ace Pilot');
+      assert.deepStrictEqual(row.roles, ['r1']);
+      assert.strictEqual(row.avatar, 'av');
+      assert.strictEqual(row.status, 'online');
+    }
+  });
 });

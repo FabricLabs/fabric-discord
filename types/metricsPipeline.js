@@ -123,8 +123,8 @@ class MetricsPipeline extends EventEmitter {
       throw new Error('MetricsPipeline needs a started Fabric Store');
     }
     for (const plugin of this.plugins.values()) {
-      let state = null;
-      try { state = await store.get(STORE_PREFIX + plugin.name); } catch (_) { state = null; }
+      // A failed read must not start empty: the next flush would overwrite durable metrics.
+      const state = await store.get(STORE_PREFIX + plugin.name);
       this.states.set(plugin.name, state && typeof state === 'object' ? state : this._init(plugin));
     }
     if (this.settings.tickMs > 0) {
@@ -206,8 +206,13 @@ class MetricsPipeline extends EventEmitter {
     this._flushTimer = null;
     const names = Array.from(this._dirty);
     this._dirty.clear();
-    for (const name of names) {
-      await this.settings.store.set(STORE_PREFIX + name, this.states.get(name));
+    for (let i = 0; i < names.length; i++) {
+      try {
+        await this.settings.store.set(STORE_PREFIX + names[i], this.states.get(names[i]));
+      } catch (err) {
+        for (const name of names.slice(i)) this._dirty.add(name);
+        throw err;
+      }
     }
   }
 
