@@ -1,19 +1,11 @@
 $ npm i --allow-git=all
 
-added 157 packages, and audited 158 packages in 18s
+added 205 packages, and audited 206 packages in 2m
 
-32 packages are looking for funding
+47 packages are looking for funding
   run `npm fund` for details
 
-6 moderate severity vulnerabilities
-
-To address all issues possible (including breaking changes), run:
-  npm audit fix --force
-
-Some issues need review, and may require choosing
-a different dependency.
-
-Run `npm audit` for details.
+found 0 vulnerabilities
 npm warn install-scripts 3 packages had install scripts blocked because they are not covered by allowScripts:
 npm warn install-scripts   @fabric/core@0.1.0 (install: node scripts/install-native.js)
 npm warn install-scripts   zeromq@6.8.0 (install: node ./script/install.js)
