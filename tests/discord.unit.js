@@ -158,26 +158,22 @@ describe('Discord', function () {
       }
     });
 
-    it('this core pin loads IdentityCrossSign (fabric #185)', function () {
-      const crypto = require('crypto');
+    it('this core pin is the Passport v2 release (fabric #193)', function () {
+      const Actor = require('@fabric/core/types/actor');
+      const Service = require('@fabric/core/types/service');
       const Key = require('@fabric/core/types/key');
       const Identity = require('@fabric/core/types/identity');
-      const { SIGN_TYPE, buildCrossSignMessage } = require('@fabric/core/functions/identityCrossSign');
-      const { signCrossSign } = require('@fabric/core/functions/identityCrossSignVerify');
+      const Delegation = require('@fabric/core/types/delegation');
+      const { PASSPORT_VERSION, createChallenge, verifyAssertion } = require('@fabric/core/functions/passport');
       const { fabricIdentityIdFromPubkeyHex } = require('@fabric/core/functions/fabricIdentitySchnorr');
-      assert.strictEqual(SIGN_TYPE, 'IdentityCrossSign');
-      assert.strictEqual(typeof buildCrossSignMessage, 'function');
-      const nonce = 'ab'.repeat(32);
-      const local = '11'.repeat(32);
-      const peer = '22'.repeat(32);
-      assert.ok(buildCrossSignMessage(nonce, local, peer));
-      assert.strictEqual(buildCrossSignMessage(nonce, 'aa:bb', peer), null);
+      assert.strictEqual(typeof Actor, 'function');
+      assert.ok(Discord.prototype instanceof Service);
+      assert.strictEqual(PASSPORT_VERSION, 2);
+      assert.strictEqual(typeof createChallenge, 'function');
+      assert.strictEqual(typeof verifyAssertion, 'function');
+      assert.strictEqual(typeof Delegation, 'function');
       const ident = new Identity(new Key());
-      const other = new Identity(new Key());
-      assert.throws(
-        () => signCrossSign(ident, { peerPubkey: other.pubkey, nonce: crypto.randomBytes(32).toString('hex') }, 'ChatMessage'),
-        /unknown cross-sign type/i
-      );
+      assert.match(fabricIdentityIdFromPubkeyHex(ident.pubkey), /^id1/);
       assert.throws(() => fabricIdentityIdFromPubkeyHex('02aa'), /66 hex/i);
     });
 

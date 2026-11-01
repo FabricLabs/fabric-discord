@@ -18,6 +18,9 @@
     "./plugins/messageActivity": "./plugins/messageActivity.js"
   },
   "scripts": {
+    "coverage": "NODE_ENV=test c8 npm test",
+    "make:coverage": "npm run coverage && c8 report --reporter html",
+    "report:coverage": "npm run make:coverage && mkdir -p reports && c8 report --reporter=text-lcov > reports/coverage.lcov",
     "report:install": "rm -rf node_modules && mkdir -p reports && rm -f package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
     "test": "NODE_ENV=test mocha tests --extension js --exit"
   },
@@ -47,6 +50,7 @@
     "lodash.merge": "=4.6.2"
   },
   "devDependencies": {
+    "c8": "=12.0.0",
     "mocha": "=12.0.3"
   }
 }
