@@ -23,7 +23,7 @@ Re-pin after Wave 1 core honesty lands on a new tip.
 - Constructor trims blank `channel` / `app.id` / `app.secret` like `token`.
 - Package export `./functions/voiceChannelStats` for consumers that already require the leaf.
 - OAuth CSRF `state`: `generateAuthorizeLink` emits a one-time 64-hex token (TTL 10m, cap 64). Missing/unknown/replayed state is 400. Callback still 501 (no code exchange).
-- `@fabric/core` lockfile tracks `#feature/rsi` (see lockfile SHA). `report:install` removes `package-lock.json` then `npm i --allow-git=all`.
+- `@fabric/core` lockfile tracks `#feature/passport` (see lockfile SHA). `report:install` removes `package-lock.json` then `npm i --allow-git=all`.
 - Voice flag persist: session transitions `commit()` immediately; mute/deafen/stream flags debounce 5s. Unit test flushes the deferred timer (`_flushVoiceCommit`) so the second commit is observed.
 - Activity `target.type` uses legacy `'dm'` / `'text'` / `'news'` strings (discord.js v14 ChannelType numbers).
 - GoonCitizen already requires `@fabric/discord/functions/normalizeDiscordSettings` (local file is a re-export). Hub does not depend on this package.

@@ -61,12 +61,22 @@ function ensureContentMaps (content) {
 }
 
 /**
- * @param {object} row
+ * Merge an observation over a stored row. A display name copied from the
+ * username (`displayNameInferred`) follows later usernames; one Discord
+ * supplied is kept until another replaces it.
+ * @param {object|null} prev
+ * @param {object} clean
  * @returns {object}
  * @private
  */
-function withDisplayName (row) {
-  if (row && row.username != null && !row.displayName) row.displayName = String(row.username);
+function mergeRow (prev, clean) {
+  const row = Object.assign({}, prev || {}, clean);
+  if (clean.displayName) {
+    delete row.displayNameInferred;
+  } else if (row.username != null && (!row.displayName || row.displayNameInferred)) {
+    row.displayName = String(row.username);
+    row.displayNameInferred = true;
+  }
   return row;
 }
 
@@ -93,7 +103,7 @@ function mergeById (prevList, incomingList, sanitize, cap) {
     if (!clean || !clean.id) continue;
     const id = String(clean.id);
     const prev = byId.get(id);
-    byId.set(id, withDisplayName(prev ? Object.assign({}, prev, clean) : clean));
+    byId.set(id, mergeRow(prev, clean));
   }
   let out = Array.from(byId.values());
   if (Number.isFinite(cap) && out.length > cap) {
@@ -144,15 +154,18 @@ function sanitizeChannelRow (channel) {
 function sanitizeMemberRow (member, seenAt) {
   let row = null;
   if (member && member.username != null && member.id != null) {
-    // Partial observations (chat authors) must not blank fields a fuller snapshot stored.
+    // Partial observations (chat authors) must not blank fields a fuller snapshot stored;
+    // a snapshot that names `avatar: null` clears it.
     row = {
       id: String(member.id),
       username: String(member.username),
       bot: member.bot === true
     };
-    if (member.displayName) row.displayName = String(member.displayName);
+    if (member.displayName && member.displayNameInferred !== true) row.displayName = String(member.displayName);
+    if (member.displayNameInferred === true) row.displayNameInferred = true;
+    if (member.globalName != null) row.globalName = String(member.globalName);
     if (member.status != null) row.status = String(member.status);
-    if (member.avatar != null) row.avatar = String(member.avatar);
+    if (Object.prototype.hasOwnProperty.call(member, 'avatar')) row.avatar = member.avatar != null ? String(member.avatar) : null;
     if (Array.isArray(member.roles)) row.roles = member.roles.map(String);
   } else {
     row = serializeMember(member);
@@ -220,6 +233,12 @@ function foldGuild (content, incoming, opts = {}) {
     }
     pruneMap(maps.channels, STORE_CHANNEL_CAP, (c) => c && c.updatedAt);
     pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
+  } else {
+    // The user map may have evicted an observed member the guild still holds in full.
+    const observed = new Set((snap.members || []).map((m) => m && m.id != null && String(m.id)).filter(Boolean));
+    for (const m of members) {
+      if (m && observed.has(String(m.id))) foldUser(maps, m, { observedAt });
+    }
   }
   pruneMap(maps.guilds, STORE_GUILD_CAP, (g) => g && (g.updatedAt || g.observedAt));
   return row;
@@ -286,7 +305,7 @@ function foldUser (content, incoming, opts = {}) {
   if (!snap || !snap.id) return null;
   const id = String(snap.id);
   const prev = maps.users[id] || null;
-  const row = withDisplayName(prev ? Object.assign({}, prev, snap) : snap);
+  const row = mergeRow(prev, snap);
   maps.users[id] = row;
   if (!opts.skipPrune) pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
   return row;

@@ -77,7 +77,8 @@ function partialsFrom (list) {
   if (!Array.isArray(list)) return [];
   const values = list
     .map((entry) => (typeof entry === 'number' ? entry : Partials[entry]))
-    .filter((value) => Object.values(Partials).includes(value));
+    // `Partials['0']` is the reverse-mapped name 'User'; only the numeric values are partials.
+    .filter((value) => typeof value === 'number' && Object.values(Partials).includes(value));
   return Array.from(new Set(values));
 }
 

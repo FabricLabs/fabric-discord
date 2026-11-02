@@ -66,7 +66,7 @@ describe('metrics pipeline', function () {
 
   beforeEach(async function () {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fabric-discord-metrics-'));
-    store = new Store({ name: 'metrics-test', path: dir, persistent: true });
+    store = new Store({ name: 'metrics-test', path: dir, persistent: true, strict: true });
     await store.start();
     clock = T0;
     source = new EventEmitter();
@@ -166,6 +166,38 @@ describe('metrics pipeline', function () {
 
     const saved = await store.get(MetricsPipeline.STORE_PREFIX + 'messages');
     assert.ok(!JSON.stringify(saved).includes('secret plans'));
+    await p.stop();
+  });
+
+  it('a failed Store read stops start; a failed write stays dirty for the next flush', async function () {
+    const failing = Object.assign(Object.create(store), {
+      settings: Object.assign({}, store.settings),
+      get: async () => { throw new Error('read failed'); }
+    });
+    const p = new MetricsPipeline({ store: failing, plugins: [voiceActivity()], tickMs: 0 });
+    await assert.rejects(() => p.start(), /read failed/);
+
+    const q = await pipeline();
+    q.on('error', () => {});
+    const set = store.set;
+    store.set = async () => { throw new Error('write failed'); };
+    voice('u1', null, ALPHA_VOICE, 'ALPHA SQUADRON');
+    await q.dispatch('noop');
+    await assert.rejects(() => q.flush(), /write failed/);
+    assert.ok(q._dirty.has('voice'));
+    store.set = set;
+    await q.flush();
+    assert.strictEqual(q._dirty.size, 0);
+    await q.stop();
+  });
+
+  it('warns when the Store is not strict', async function () {
+    const lax = Object.assign(Object.create(store), { settings: Object.assign({}, store.settings, { strict: false }) });
+    const p = new MetricsPipeline({ store: lax, plugins: [voiceActivity()], tickMs: 0 });
+    const warnings = [];
+    p.on('warning', (w) => warnings.push(w));
+    await p.start();
+    assert.strictEqual(warnings.length, 1);
     await p.stop();
   });
 

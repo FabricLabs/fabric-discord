@@ -103,6 +103,8 @@ function serializeMember (member) {
     id: String(id),
     username,
     displayName,
+    // The account's own display name; `displayName` may be this server's nickname.
+    globalName: user.globalName != null && String(user.globalName).trim() ? String(user.globalName) : null,
     bot: user.bot === true || member.bot === true,
     status,
     avatar

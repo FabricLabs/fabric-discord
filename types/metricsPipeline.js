@@ -28,7 +28,7 @@ const STORE_PREFIX = '/metrics/plugins/';
 class MetricsPipeline extends EventEmitter {
   /**
    * @param {Object} [settings]
-   * @param {Object} settings.store Fabric Store (`get` / `set`), already started
+   * @param {Object} settings.store Fabric Store (`get` / `set`), already started; build a core Store with `strict: true` so failed reads and writes reject instead of reading as empty or saved
    * @param {Array<Object>} [settings.operations]
    * @param {Array<Object>} [settings.plugins]
    * @param {number} [settings.flushMs] debounce for Store writes (default 5s)
@@ -121,6 +121,9 @@ class MetricsPipeline extends EventEmitter {
     const store = this.settings.store;
     if (!store || typeof store.get !== 'function' || typeof store.set !== 'function') {
       throw new Error('MetricsPipeline needs a started Fabric Store');
+    }
+    if (store.settings && store.settings.strict !== true) {
+      this.emit('warning', 'MetricsPipeline: the Store is not strict, so a failed read starts empty and a failed write counts as saved; build it with strict: true');
     }
     for (const plugin of this.plugins.values()) {
       // A failed read must not start empty: the next flush would overwrite durable metrics.

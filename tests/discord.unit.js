@@ -34,6 +34,7 @@ describe('Discord', function () {
       const { Partials } = require('discord.js');
       assert.deepStrictEqual(Discord.partialsFrom(['Channel', 'Nope', Partials.Message, 'Channel']), [Partials.Channel, Partials.Message]);
       assert.deepStrictEqual(Discord.partialsFrom(undefined), []);
+      assert.deepStrictEqual(Discord.partialsFrom(['0', String(Partials.Channel)]), []);
       const discord = new Discord({ partials: ['Channel'] });
       const client = discord._createClient();
       assert.ok(client.options.partials.includes(Partials.Channel));
