@@ -5,12 +5,13 @@ const crypto = require('crypto');
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials, SlashCommandBuilder, ChannelType } = require('discord.js');
 
 /** @private */
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 /** @private */
 const OAUTH_STATE_MAX = 64;
+const SYNC_COMMAND_COOLDOWN_MS = 60 * 1000;
 
 
 // Fabric Types
@@ -64,6 +65,21 @@ function legacyActivityChannelType (channelType) {
     default:
       return channelType;
   }
+}
+
+/**
+ * discord.js `Partials` for a settings list of names (`'Channel'`) or values.
+ * Unknown entries are dropped.
+ * @param {Array<string|number>} list
+ * @returns {number[]}
+ */
+function partialsFrom (list) {
+  if (!Array.isArray(list)) return [];
+  const values = list
+    .map((entry) => (typeof entry === 'number' ? entry : Partials[entry]))
+    // `Partials['0']` is the reverse-mapped name 'User'; only the numeric values are partials.
+    .filter((value) => typeof value === 'number' && Object.values(Partials).includes(value));
+  return Array.from(new Set(values));
 }
 
 /**
@@ -136,6 +152,7 @@ class Discord extends Service {
     if (Array.isArray(settings.intents)) this.settings.intents = settings.intents.slice();
     if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
     if (Array.isArray(settings.alerts)) this.settings.alerts = settings.alerts.slice();
+    if (Array.isArray(settings.partials)) this.settings.partials = settings.partials.slice();
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;
@@ -170,7 +187,12 @@ class Discord extends Service {
         this.emit('error', err);
       });
     };
-    this._onClientMessage = this._handleClientMessage.bind(this);
+    this._onClientMessage = (message) => {
+      this._handleClientMessage(message).catch((err) => {
+        this.emit('error', err);
+      });
+    };
+    this._lastCommandSyncAt = 0;
     this._onClientReady = this._onClientReady.bind(this);
     this._clientDestroyed = false;
     this._voiceCommitTimer = null;
@@ -277,15 +299,39 @@ class Discord extends Service {
     return this.postToChannel(channelId, msg);
   }
 
+  /**
+   * Direct message one user. Accepts a string or a discord.js message payload.
+   * discord.js errors pass through unchanged (code 50007: the user does not
+   * accept DMs from this bot), so callers can tell the person.
+   * @param {string} userID
+   * @param {string|object} msg
+   * @returns {Promise<object>} The sent message.
+   */
+  async sendDirect (userID, msg) {
+    const id = String(userID || '').trim();
+    if (!id) throw new Error('Discord user id required');
+    if (!this.client || !this.client.isReady || !this.client.isReady()) {
+      throw new Error('Discord client is not ready');
+    }
+    const user = await this.client.users.fetch(id);
+    const payload = (typeof msg === 'string')
+      ? { content: msg }
+      : (msg && typeof msg === 'object' ? msg : { content: String(msg) });
+    return user.send(payload);
+  }
+
   _createClient () {
-    return new Client({
+    const options = {
       intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
-    });
+    };
+    const partials = partialsFrom(this.settings.partials);
+    if (partials.length) options.partials = partials;
+    return new Client(options);
   }
 
   _attachClientListeners () {
     this.client.on('error', this._onClientError);
-    this.client.once('ready', this._onClientReady);
+    this.client.once(Events.ClientReady, this._onClientReady);
     this.client.on('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.on('messageCreate', this._onClientMessage);
   }
@@ -293,7 +339,7 @@ class Discord extends Service {
   _detachClientListeners () {
     if (!this.client) return;
     this.client.removeListener('error', this._onClientError);
-    this.client.removeListener('ready', this._onClientReady);
+    this.client.removeListener(Events.ClientReady, this._onClientReady);
     this.client.removeListener('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.removeListener('messageCreate', this._onClientMessage);
   }
@@ -446,6 +492,11 @@ class Discord extends Service {
     }
 
     if (message.content === '!sync') {
+      const at = Date.now();
+      if (at - this._lastCommandSyncAt < SYNC_COMMAND_COOLDOWN_MS) {
+        return message.channel.send('Synced recently; try again later.');
+      }
+      this._lastCommandSyncAt = at;
       await this.sync();
       return message.channel.send('Synced.');
     }
@@ -944,6 +995,7 @@ class Discord extends Service {
 }
 
 Discord.legacyActivityChannelType = legacyActivityChannelType;
+Discord.partialsFrom = partialsFrom;
 Discord.positiveCreatedMs = positiveCreatedMs;
 Discord.catalog = require('../functions/discordCatalog');
 Discord.stateAccumulate = require('../functions/discordStateAccumulate');

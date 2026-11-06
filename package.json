@@ -18,6 +18,9 @@
     "./plugins/messageActivity": "./plugins/messageActivity.js"
   },
   "scripts": {
+    "coverage": "NODE_ENV=test c8 npm test",
+    "make:coverage": "npm run coverage && c8 report --reporter html",
+    "report:coverage": "npm run make:coverage && mkdir -p reports && c8 report --reporter=text-lcov > reports/coverage.lcov",
     "report:install": "rm -rf node_modules && mkdir -p reports && rm -f package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
     "test": "NODE_ENV=test mocha tests --extension js --exit"
   },
@@ -37,16 +40,21 @@
   },
   "homepage": "https://github.com/FabricLabs/fabric-discord#readme",
   "engines": {
-    "node": "24.15.0",
+    "node": "26.12.1",
     "npm": ">=12.0.0"
   },
   "dependencies": {
-    "@fabric/core": "FabricLabs/fabric#feature/channels",
-    "cross-fetch": "=4.0.0",
-    "discord.js": "=14.18.0",
+    "@fabric/core": "FabricLabs/fabric#feature/schemas",
+    "cross-fetch": "=4.1.0",
+    "discord.js": "=14.27.0",
     "lodash.merge": "=4.6.2"
   },
   "devDependencies": {
-    "mocha": "=11.1.0"
+    "c8": "=12.0.0",
+    "mocha": "=12.0.3"
+  },
+  "overrides": {
+    "glob@>=9.0.0 <14.0.2": "=14.0.3",
+    "minimatch@>=9.0.0 <11.0.1": "=11.0.3"
   }
 }

@@ -30,6 +30,48 @@ describe('Discord', function () {
       }
     });
 
+    it('passes partials to the discord.js client by name', async function () {
+      const { Partials } = require('discord.js');
+      assert.deepStrictEqual(Discord.partialsFrom(['Channel', 'Nope', Partials.Message, 'Channel']), [Partials.Channel, Partials.Message]);
+      assert.deepStrictEqual(Discord.partialsFrom(undefined), []);
+      assert.deepStrictEqual(Discord.partialsFrom(['0', String(Partials.Channel)]), []);
+      const discord = new Discord({ partials: ['Channel'] });
+      const client = discord._createClient();
+      assert.ok(client.options.partials.includes(Partials.Channel));
+      await client.destroy();
+      const plain = new Discord()._createClient();
+      assert.ok(!(plain.options.partials || []).includes(Partials.Channel));
+      await plain.destroy();
+    });
+
+    it('sends direct messages and passes discord.js refusals through', async function () {
+      const discord = new Discord();
+      const sent = [];
+      let ready = false;
+      discord.client = {
+        isReady: () => ready,
+        users: {
+          fetch: async (id) => ({
+            send: async (payload) => {
+              if (id === 'closed') throw Object.assign(new Error('Cannot send messages to this user'), { code: 50007 });
+              sent.push({ id, payload });
+              return { id: 'm1' };
+            }
+          })
+        }
+      };
+      await assert.rejects(discord.sendDirect('u1', 'hi'), /not ready/);
+      ready = true;
+      await assert.rejects(discord.sendDirect('', 'hi'), /user id required/);
+      assert.deepStrictEqual(await discord.sendDirect('u1', 'hi'), { id: 'm1' });
+      await discord.sendDirect('u2', { content: 'card', components: [] });
+      assert.deepStrictEqual(sent, [
+        { id: 'u1', payload: { content: 'hi' } },
+        { id: 'u2', payload: { content: 'card', components: [] } }
+      ]);
+      await assert.rejects(discord.sendDirect('closed', 'hi'), (error) => error.code === 50007);
+    });
+
     it('joins OAuth scopes with spaces', async function () {
       const discord = new Discord({ app: { id: '123' }, authority: 'localhost:3040' });
       const authorize = new URL(discord.generateAuthorizeLink());
@@ -117,26 +159,22 @@ describe('Discord', function () {
       }
     });
 
-    it('this core pin loads IdentityCrossSign (fabric #185)', function () {
-      const crypto = require('crypto');
+    it('this core pin is the Passport v2 release (fabric #193)', function () {
+      const Actor = require('@fabric/core/types/actor');
+      const Service = require('@fabric/core/types/service');
       const Key = require('@fabric/core/types/key');
       const Identity = require('@fabric/core/types/identity');
-      const { SIGN_TYPE, buildCrossSignMessage } = require('@fabric/core/functions/identityCrossSign');
-      const { signCrossSign } = require('@fabric/core/functions/identityCrossSignVerify');
+      const Delegation = require('@fabric/core/types/delegation');
+      const { PASSPORT_VERSION, createChallenge, verifyAssertion } = require('@fabric/core/functions/passport');
       const { fabricIdentityIdFromPubkeyHex } = require('@fabric/core/functions/fabricIdentitySchnorr');
-      assert.strictEqual(SIGN_TYPE, 'IdentityCrossSign');
-      assert.strictEqual(typeof buildCrossSignMessage, 'function');
-      const nonce = 'ab'.repeat(32);
-      const local = '11'.repeat(32);
-      const peer = '22'.repeat(32);
-      assert.ok(buildCrossSignMessage(nonce, local, peer));
-      assert.strictEqual(buildCrossSignMessage(nonce, 'aa:bb', peer), null);
+      assert.strictEqual(typeof Actor, 'function');
+      assert.ok(Discord.prototype instanceof Service);
+      assert.strictEqual(PASSPORT_VERSION, 2);
+      assert.strictEqual(typeof createChallenge, 'function');
+      assert.strictEqual(typeof verifyAssertion, 'function');
+      assert.strictEqual(typeof Delegation, 'function');
       const ident = new Identity(new Key());
-      const other = new Identity(new Key());
-      assert.throws(
-        () => signCrossSign(ident, { peerPubkey: other.pubkey, nonce: crypto.randomBytes(32).toString('hex') }, 'ChatMessage'),
-        /unknown cross-sign type/i
-      );
+      assert.match(fabricIdentityIdFromPubkeyHex(ident.pubkey), /^id1/);
       assert.throws(() => fabricIdentityIdFromPubkeyHex('02aa'), /66 hex/i);
     });
 
@@ -189,7 +227,6 @@ describe('Discord', function () {
       });
       const after = Date.now();
       assert.ok(seen[0].object.created >= before && seen[0].object.created <= after);
-      assert.strictEqual(Discord.positiveCreatedMs(0), Discord.positiveCreatedMs(0));
       assert.ok(Discord.positiveCreatedMs(0) > 0);
       assert.strictEqual(Discord.positiveCreatedMs(42), 42);
       if (discord.client && typeof discord.client.destroy === 'function') {
@@ -230,6 +267,20 @@ describe('Discord', function () {
       });
       assert.strictEqual(synced, 1);
       assert.strictEqual(replies[0], 'Synced.');
+      await discord._handleClientMessage({
+        author: { bot: false, id: 'u1', username: 'pilot' },
+        channel: {
+          id: 'c1',
+          type: ChannelType.GuildText,
+          name: 'general',
+          send: async (msg) => { replies.push(msg); return msg; }
+        },
+        id: 'm-sync-2',
+        content: '!sync',
+        createdTimestamp: 100
+      });
+      assert.strictEqual(synced, 1, 'second !sync inside the cooldown is refused');
+      discord._clearCatalogCommitTimer();
       if (discord.client && typeof discord.client.destroy === 'function') {
         await discord.client.destroy();
       }

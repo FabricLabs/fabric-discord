@@ -28,7 +28,7 @@ const STORE_PREFIX = '/metrics/plugins/';
 class MetricsPipeline extends EventEmitter {
   /**
    * @param {Object} [settings]
-   * @param {Object} settings.store Fabric Store (`get` / `set`), already started
+   * @param {Object} settings.store Fabric Store (`get` / `set`), already started; build a core Store with `strict: true` so failed reads and writes reject instead of reading as empty or saved
    * @param {Array<Object>} [settings.operations]
    * @param {Array<Object>} [settings.plugins]
    * @param {number} [settings.flushMs] debounce for Store writes (default 5s)
@@ -122,9 +122,12 @@ class MetricsPipeline extends EventEmitter {
     if (!store || typeof store.get !== 'function' || typeof store.set !== 'function') {
       throw new Error('MetricsPipeline needs a started Fabric Store');
     }
+    if (store.settings && store.settings.strict !== true) {
+      this.emit('warning', 'MetricsPipeline: the Store is not strict, so a failed read starts empty and a failed write counts as saved; build it with strict: true');
+    }
     for (const plugin of this.plugins.values()) {
-      let state = null;
-      try { state = await store.get(STORE_PREFIX + plugin.name); } catch (_) { state = null; }
+      // A failed read must not start empty: the next flush would overwrite durable metrics.
+      const state = await store.get(STORE_PREFIX + plugin.name);
       this.states.set(plugin.name, state && typeof state === 'object' ? state : this._init(plugin));
     }
     if (this.settings.tickMs > 0) {
@@ -206,8 +209,13 @@ class MetricsPipeline extends EventEmitter {
     this._flushTimer = null;
     const names = Array.from(this._dirty);
     this._dirty.clear();
-    for (const name of names) {
-      await this.settings.store.set(STORE_PREFIX + name, this.states.get(name));
+    for (let i = 0; i < names.length; i++) {
+      try {
+        await this.settings.store.set(STORE_PREFIX + names[i], this.states.get(names[i]));
+      } catch (err) {
+        for (const name of names.slice(i)) this._dirty.add(name);
+        throw err;
+      }
     }
   }
 

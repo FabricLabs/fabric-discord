@@ -15,11 +15,11 @@ const {
  *
  * State: `{ operations: { <id>: { total, days: { YYYY-MM-DD: { messages, authors } } } } }`
  * @param {Object} [options]
- * @param {number} [options.retentionDays] day buckets kept (default 90)
+ * @param {number} [options.retentionDays] day buckets kept (default: all history)
  * @returns {Object} metrics plugin
  */
 function messageActivity (options = {}) {
-  const retentionDays = options.retentionDays || 90;
+  const retentionDays = options.retentionDays || 0;
 
   return {
     name: 'messages',
