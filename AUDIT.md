@@ -5,7 +5,7 @@ Living posture notes for **`@fabric/discord`**. Re-run **`npm audit`** after dep
 
 | Area | Posture |
 |------|---------|
-| `@fabric/core` | Git pin `FabricLabs/fabric#feature/passport` (lockfile Git commit SHA `79a08a0fad09202b2756d4674f249f638a06eabd`) |
+| `@fabric/core` | Git pin `FabricLabs/fabric#feature/schemas`; the commit audited is the one `package-lock.json` resolves (`node_modules/@fabric/core` `resolved`) |
 | npm `allow-git` | **`.npmrc` `allow-git=all`** — required for git-dep preparation of core |
 | Node | **`engines.node` = `26.12.1`** (`.nvmrc`, same as the rest of the suite) |
 | discord.js | **`14.27.0`** (from `14.18.0`, which pinned `undici@6.21.1` exactly: smuggling, CRLF injection, WebSocket DoS). Now `undici@6.29.1`. The client listens for `Events.ClientReady` (`clientReady`); the bare `ready` event is deprecated in 14.22+ and gone in v15. This service still emits its own `ready` |
@@ -16,7 +16,7 @@ Consumers (goon.vc, GoonCitizen, Doorman) inherit discord.js from this pin: npm 
 
 ## Recommendations
 
-1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/passport --allow-git=all`. Re-pin releases to the lockfile Git commit SHA. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
+1. After dependency edits: **`npm i --allow-git=all`** then **`npm audit`** and **`npm test`**. **`npm run report:install` removes `package-lock.json`** then `npm i --allow-git=all` — bump core with `npm install FabricLabs/fabric#feature/schemas --allow-git=all`. Re-pin releases to the lockfile Git commit SHA. Diff the new lockfile before committing — do not treat the wiped lockfile as a release artifact until that review.
 2. Do not run **`npm audit fix --force`** — it will fight discord.js / mocha pins.
 3. Keep discord.js on the newest 14.x; v15 is a coordinated consumer bump.
 

@@ -224,6 +224,37 @@ describe('discordStateAccumulate', function () {
     assert.strictEqual(content.users.u1.username, 'newer');
   });
 
+  it('a guild message keeps a Discord display name the user row got after an inferred one', function () {
+    const content = {};
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace' });
+    assert.strictEqual(content.guilds.g1.members[0].displayNameInferred, true);
+    foldUser(content, { id: 'u1', username: 'ace', displayName: 'Ace Pilot' });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace' });
+    assert.strictEqual(content.users.u1.displayName, 'Ace Pilot');
+    assert.strictEqual(content.users.u1.displayNameInferred, undefined);
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace2' });
+    assert.strictEqual(content.users.u1.displayName, 'Ace Pilot');
+    assert.strictEqual(content.users.u1.username, 'ace2');
+    assert.strictEqual(content.guilds.g1.members[0].displayName, 'ace2', 'the guild row stays inferred');
+  });
+
+  it('a full snapshot with globalName: null clears a stored global name; a chat author does not', function () {
+    const content = {};
+    const member = (globalName) => serializeMember({ id: 'u1', user: { id: 'u1', username: 'a', globalName } });
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [member('Global')] });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.globalName, 'Global');
+    assert.strictEqual(content.guilds.g1.members[0].globalName, 'Global');
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [member(null)] });
+    assert.strictEqual(content.users.u1.globalName, null);
+    assert.strictEqual(content.guilds.g1.members[0].globalName, null);
+    foldGuild(content, { id: 'g2', name: 'H', channels: [], members: [member('Later')] });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.globalName, 'Later', "g1's stored null does not clear a newer global name");
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [{ id: 'u2', username: 'b' }] });
+    assert.strictEqual(content.users.u1.globalName, 'Later', 'a snapshot that omits u1 does not clear it either');
+  });
+
   it('a full snapshot with avatar: null clears a stored avatar; a chat author does not', function () {
     const content = {};
     const guild = (avatar) => ({ id: 'g1', name: 'G', channels: [], members: [{ id: 'u1', username: 'a', displayName: 'A', bot: false, status: null, avatar }] });

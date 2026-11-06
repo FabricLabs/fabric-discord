@@ -71,7 +71,8 @@ function ensureContentMaps (content) {
  */
 function mergeRow (prev, clean) {
   const row = Object.assign({}, prev || {}, clean);
-  if (clean.displayName) {
+  const kept = !!(prev && prev.displayName && prev.displayNameInferred !== true);
+  if (clean.displayName || kept) {
     delete row.displayNameInferred;
   } else if (row.username != null && (!row.displayName || row.displayNameInferred)) {
     row.displayName = String(row.username);
@@ -155,7 +156,7 @@ function sanitizeMemberRow (member, seenAt) {
   let row = null;
   if (member && member.username != null && member.id != null) {
     // Partial observations (chat authors) must not blank fields a fuller snapshot stored;
-    // a snapshot that names `avatar: null` clears it.
+    // a snapshot that names `avatar: null` or `globalName: null` clears it.
     row = {
       id: String(member.id),
       username: String(member.username),
@@ -163,7 +164,7 @@ function sanitizeMemberRow (member, seenAt) {
     };
     if (member.displayName && member.displayNameInferred !== true) row.displayName = String(member.displayName);
     if (member.displayNameInferred === true) row.displayNameInferred = true;
-    if (member.globalName != null) row.globalName = String(member.globalName);
+    if (Object.prototype.hasOwnProperty.call(member, 'globalName')) row.globalName = member.globalName != null ? String(member.globalName) : null;
     if (member.status != null) row.status = String(member.status);
     if (Object.prototype.hasOwnProperty.call(member, 'avatar')) row.avatar = member.avatar != null ? String(member.avatar) : null;
     if (Array.isArray(member.roles)) row.roles = member.roles.map(String);
@@ -222,6 +223,17 @@ function foldGuild (content, incoming, opts = {}) {
     observedAt
   };
   maps.guilds[id] = row;
+  // A stored null global name may predate one another guild's snapshot gave the user;
+  // only a snapshot that names `globalName: null` clears the user's.
+  const named = new Set((snap.members || [])
+    .filter((m) => m && m.id != null && Object.prototype.hasOwnProperty.call(m, 'globalName'))
+    .map((m) => String(m.id)));
+  const userRow = (m) => {
+    if (m.globalName != null || named.has(String(m.id))) return m;
+    const rest = Object.assign({}, m);
+    delete rest.globalName;
+    return rest;
+  };
   if (!opts.observedOnly) {
     for (const ch of channels) {
       if (!ch || !ch.id) continue;
@@ -229,7 +241,7 @@ function foldGuild (content, incoming, opts = {}) {
     }
     for (const m of members) {
       if (!m || !m.id) continue;
-      foldUser(maps, m, { observedAt, skipPrune: true });
+      foldUser(maps, userRow(m), { observedAt, skipPrune: true });
     }
     pruneMap(maps.channels, STORE_CHANNEL_CAP, (c) => c && c.updatedAt);
     pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
@@ -237,7 +249,7 @@ function foldGuild (content, incoming, opts = {}) {
     // The user map may have evicted an observed member the guild still holds in full.
     const observed = new Set((snap.members || []).map((m) => m && m.id != null && String(m.id)).filter(Boolean));
     for (const m of members) {
-      if (m && observed.has(String(m.id))) foldUser(maps, m, { observedAt });
+      if (m && observed.has(String(m.id))) foldUser(maps, userRow(m), { observedAt });
     }
   }
   pruneMap(maps.guilds, STORE_GUILD_CAP, (g) => g && (g.updatedAt || g.observedAt));
