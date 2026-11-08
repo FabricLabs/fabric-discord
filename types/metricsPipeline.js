@@ -110,7 +110,9 @@ class MetricsPipeline extends EventEmitter {
     for (const operation of this.operations) {
       for (const entry of operation.metrics) {
         if (entry.plugin !== pluginName) continue;
-        if (entry.guildId && channel.guildId && String(channel.guildId) !== entry.guildId) continue;
+        // Fails closed: a channel with no guild never matches a guild-scoped entry,
+        // so a same-named channel on another server can't inflate its counts.
+        if (entry.guildId && String(channel.guildId || '') !== entry.guildId) continue;
         if (matchesAnyChannel(entry.channels, channel)) hits.push({ operation, entry });
       }
     }

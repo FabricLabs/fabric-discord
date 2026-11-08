@@ -149,7 +149,7 @@ describe('metrics pipeline', function () {
       type: 'DiscordMessage',
       actor: { ref: author },
       object: { content },
-      target: { ref: channel, name: 'alpha-squadron' }
+      target: { ref: channel, name: 'alpha-squadron', guildId: GUILD }
     });
     message('u1', ALPHA_TEXT, 'secret plans');
     message('u1', ALPHA_TEXT, 'more');
@@ -166,6 +166,23 @@ describe('metrics pipeline', function () {
 
     const saved = await store.get(MetricsPipeline.STORE_PREFIX + 'messages');
     assert.ok(!JSON.stringify(saved).includes('secret plans'));
+    await p.stop();
+  });
+
+  it('never credits a guild-scoped operation from a channel on another server', async function () {
+    const p = await pipeline();
+    for (const guildId of ['999', undefined]) {
+      source.emit('activity', {
+        type: 'DiscordMessage',
+        actor: { ref: 'u9' },
+        object: { content: 'x' },
+        target: { ref: ALPHA_TEXT, name: 'alpha-squadron', guildId }
+      });
+    }
+    await p.flush();
+    const report = await p.report();
+    const alpha = report.operations.find((op) => op.id === 'alpha-squadron').metrics;
+    assert.strictEqual(alpha.messages.last7Days.messages, 0);
     await p.stop();
   });
 

@@ -67,6 +67,44 @@ function legacyActivityChannelType (channelType) {
   }
 }
 
+/** Gateway intents used when `settings.intents` is not given; none is privileged. */
+const DEFAULT_INTENTS = Object.freeze([
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.GuildMessageReactions,
+  GatewayIntentBits.DirectMessages,
+  GatewayIntentBits.DirectMessageReactions,
+  GatewayIntentBits.GuildVoiceStates
+]);
+
+/** Intents Discord grants only when the bot owner enables them. */
+const PRIVILEGED_INTENTS = Object.freeze([
+  GatewayIntentBits.GuildMembers,
+  GatewayIntentBits.GuildPresences,
+  GatewayIntentBits.MessageContent
+]);
+
+/**
+ * Mentions a send may ping when the payload names none: nobody. User text
+ * relayed through the bot can't ping @everyone, a role, or a member unless the
+ * caller passes `allowedMentions` on that payload.
+ */
+const DEFAULT_ALLOWED_MENTIONS = Object.freeze({ parse: [], repliedUser: false });
+
+/**
+ * discord.js `GatewayIntentBits` for a settings list of names (`'Guilds'`) or values.
+ * Unknown entries are dropped.
+ * @param {Array<string|number>} list
+ * @returns {number[]}
+ */
+function intentsFrom (list) {
+  if (!Array.isArray(list)) return [];
+  const values = list
+    .map((entry) => (typeof entry === 'number' ? entry : GatewayIntentBits[entry]))
+    .filter((value) => typeof value === 'number' && Object.values(GatewayIntentBits).includes(value));
+  return Array.from(new Set(values));
+}
+
 /**
  * discord.js `Partials` for a settings list of names (`'Channel'`) or values.
  * Unknown entries are dropped.
@@ -115,19 +153,9 @@ class Discord extends Service {
         'guilds',
         'guilds.join'
       ],
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageReactions,
-        GatewayIntentBits.DirectMessageTyping,
-        GatewayIntentBits.GuildMessageTyping,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.MessageContent
-      ],
+      // Non-privileged by default. GuildMembers, GuildPresences, and
+      // MessageContent must be asked for (and enabled in the Developer Portal).
+      intents: DEFAULT_INTENTS.slice(),
       /**
        * When false, skip local !ping/!help/!status/!sync replies so a Fabric
        * consumer can claim DiscordRequest frames without multi-bot collisions.
@@ -322,7 +350,8 @@ class Discord extends Service {
 
   _createClient () {
     const options = {
-      intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
+      intents: intentsFrom(this.settings.intents),
+      allowedMentions: Object.assign({}, DEFAULT_ALLOWED_MENTIONS, { parse: [] })
     };
     const partials = partialsFrom(this.settings.partials);
     if (partials.length) options.partials = partials;
@@ -471,6 +500,7 @@ class Discord extends Service {
       target: {
         id: target.id,
         name: message.channel.name, // is undefined in case of DM
+        guildId: message.guildId || null,
         type: targetType,
         ref: message.channel.id // TODO: change name to "upstream ID" (UID)?
       }
@@ -996,6 +1026,10 @@ class Discord extends Service {
 
 Discord.legacyActivityChannelType = legacyActivityChannelType;
 Discord.partialsFrom = partialsFrom;
+Discord.intentsFrom = intentsFrom;
+Discord.DEFAULT_INTENTS = DEFAULT_INTENTS;
+Discord.PRIVILEGED_INTENTS = PRIVILEGED_INTENTS;
+Discord.DEFAULT_ALLOWED_MENTIONS = DEFAULT_ALLOWED_MENTIONS;
 Discord.positiveCreatedMs = positiveCreatedMs;
 Discord.catalog = require('../functions/discordCatalog');
 Discord.stateAccumulate = require('../functions/discordStateAccumulate');

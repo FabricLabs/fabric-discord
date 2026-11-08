@@ -19,6 +19,12 @@ A **webhook URL** authorizes posting through that webhook only. Never commit any
 
 **Bot mode** (`start()` / gateway login) requires a non-empty bot token. **Webhook-only** mode is supported by `normalizeDiscordSettings` when a webhook URL is set and no token is present — those consumers must not call `start()`.
 
+**Defaults that limit what the bot sees and does:**
+- Gateway intents default to non-privileged (`Discord.DEFAULT_INTENTS`). `GuildMembers`, `GuildPresences`, and `MessageContent` (`Discord.PRIVILEGED_INTENTS`) are asked for only when `settings.intents` lists them; names or `GatewayIntentBits` values both work.
+- The client sends with `allowedMentions: { parse: [], repliedUser: false }`, so relayed user text pings nobody. A caller that means to ping passes `allowedMentions` on that payload.
+- Guild-scoped metrics entries match only channels that report the same `guildId`; the `activity` event carries `target.guildId`.
+- The `activity` event carries message bodies (DMs included) to every listener and plugin. Plugins are trusted code; consumers must not log `object.content`.
+
 **Basics coverage:** [`tests/adversarialEnvironment.basics.test.js`](tests/adversarialEnvironment.basics.test.js).
 
 ## Outstanding (PR #2 / RSI follow-ups)

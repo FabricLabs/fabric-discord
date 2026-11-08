@@ -30,6 +30,19 @@ describe('Discord', function () {
       }
     });
 
+    it('asks for no privileged intent and pings nobody by default', async function () {
+      const { GatewayIntentBits } = require('discord.js');
+      const discord = new Discord();
+      for (const bit of Discord.PRIVILEGED_INTENTS) assert.ok(!discord.settings.intents.includes(bit));
+      const client = discord._createClient();
+      assert.deepStrictEqual(client.options.allowedMentions, { parse: [], repliedUser: false });
+      await client.destroy();
+      const named = new Discord({ intents: ['Guilds', 'MessageContent', 'Nope'] })._createClient();
+      assert.strictEqual(named.options.intents.has(GatewayIntentBits.MessageContent), true);
+      assert.strictEqual(named.options.intents.has(GatewayIntentBits.GuildMembers), false);
+      await named.destroy();
+    });
+
     it('passes partials to the discord.js client by name', async function () {
       const { Partials } = require('discord.js');
       assert.deepStrictEqual(Discord.partialsFrom(['Channel', 'Nope', Partials.Message, 'Channel']), [Partials.Channel, Partials.Message]);
