@@ -40,6 +40,7 @@ const {
   foldCatalog,
   catalogFromContent
 } = require('../functions/discordStateAccumulate');
+const messageText = require('../functions/messageText');
 
 /**
  * Map discord.js v14 numeric ChannelType values to the legacy string activity
@@ -161,6 +162,17 @@ class Discord extends Service {
        * consumer can claim DiscordRequest frames without multi-bot collisions.
        */
       autoCommands: true,
+      /**
+       * Other bots whose messages are emitted as `bot` events: `false` (none),
+       * `true` (every bot but this one), or a list of bot user ids. Reading
+       * them in servers needs the MessageContent intent.
+       */
+      bots: false,
+      /**
+       * When false, people's messages are neither emitted as `activity` nor
+       * folded into the catalog (for consumers that only read `bots`).
+       */
+      messages: true,
       secure: false,
       state: {
         channels: {},
@@ -181,6 +193,7 @@ class Discord extends Service {
     if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
     if (Array.isArray(settings.alerts)) this.settings.alerts = settings.alerts.slice();
     if (Array.isArray(settings.partials)) this.settings.partials = settings.partials.slice();
+    if (Array.isArray(settings.bots)) this.settings.bots = settings.bots.map(String);
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;
@@ -443,8 +456,39 @@ class Discord extends Service {
     return this;
   }
 
+  _watchesBot (authorId) {
+    const bots = this.settings.bots;
+    const self = this.client && this.client.user ? String(this.client.user.id) : null;
+    if (!bots || !authorId || authorId === self) return false;
+    return bots === true || (Array.isArray(bots) && bots.includes(authorId));
+  }
+
+  /**
+   * A message from a watched bot (`settings.bots`): emit `bot` with what a
+   * reader sees in it. Never folded into the catalog or answered.
+   * @param {Object} message discord.js Message
+   * @private
+   */
+  _handleBotMessage (message) {
+    const authorId = message.author && message.author.id != null ? String(message.author.id) : null;
+    if (!this._watchesBot(authorId)) return;
+    const member = message.member;
+    this.emit('bot', {
+      id: message.id != null ? String(message.id) : null,
+      guildId: message.guildId != null ? String(message.guildId) : null,
+      channelId: message.channelId != null
+        ? String(message.channelId)
+        : (message.channel && message.channel.id != null ? String(message.channel.id) : null),
+      authorId,
+      authorName: (member && (member.nickname || member.displayName)) || message.author.globalName || message.author.username || null,
+      created: positiveCreatedMs(message.createdTimestamp),
+      lines: messageText(message)
+    });
+  }
+
   async _handleClientMessage (message) {
-    if (message.author.bot) return; // ignore bots
+    if (message.author.bot) return this._handleBotMessage(message);
+    if (this.settings.messages === false) return;
 
     const now = (new Date()).toISOString();
     const isDm = message.channel.type === ChannelType.DM;
@@ -643,7 +687,9 @@ class Discord extends Service {
       oldChannelId: oldSlice.channelId,
       newChannelId: newSlice.channelId,
       kind: result.kind,
-      channelName
+      channelName,
+      flags: newSlice.flags,
+      oldFlags: oldSlice.flags
     });
 
     // Session join/leave/move persists immediately. Mute/deafen/stream flags
@@ -731,6 +777,51 @@ class Discord extends Service {
       botId: id.botUserId,
       fetchedAt: Date.now()
     };
+  }
+
+  /**
+   * Join a voice channel receive-only (muted, not deaf). Fills
+   * `adapterCreator` from the guild cache. Apps mix and persist; this
+   * package owns the join. Does not capture Go Live / screenshare RTP.
+   * @param {Object} input
+   * @param {string} input.guildId
+   * @param {string} input.channelId
+   * @param {Function} [input.adapterCreator]
+   * @param {number} [input.timeoutMs]
+   * @returns {Promise<Object>}
+   */
+  async joinVoiceReceive (input = {}) {
+    const guildId = String(input.guildId || '');
+    const channelId = String(input.channelId || '');
+    const cache = this.client && this.client.guilds && this.client.guilds.cache;
+    const guild = cache && typeof cache.get === 'function' ? cache.get(guildId) : null;
+    const adapterCreator = typeof input.adapterCreator === 'function'
+      ? input.adapterCreator
+      : (guild && guild.voiceAdapterCreator);
+    return this.constructor.voiceReceive.joinVoiceReceive({
+      guildId,
+      channelId,
+      adapterCreator,
+      timeoutMs: input.timeoutMs
+    });
+  }
+
+  /**
+   * Subscribe to one speaker as s16le stereo PCM at 48 kHz.
+   * @param {Object} connection
+   * @param {string} userId
+   * @returns {stream.Readable}
+   */
+  subscribeVoiceReceive (connection, userId) {
+    return this.constructor.voiceReceive.subscribeVoiceReceive(connection, userId);
+  }
+
+  /**
+   * Destroy a receive connection. Safe when `connection` is missing.
+   * @param {Object} [connection]
+   */
+  leaveVoiceReceive (connection) {
+    return this.constructor.voiceReceive.leaveVoiceReceive(connection);
   }
 
   /**
@@ -1033,5 +1124,6 @@ Discord.DEFAULT_ALLOWED_MENTIONS = DEFAULT_ALLOWED_MENTIONS;
 Discord.positiveCreatedMs = positiveCreatedMs;
 Discord.catalog = require('../functions/discordCatalog');
 Discord.stateAccumulate = require('../functions/discordStateAccumulate');
+Discord.voiceReceive = require('../functions/voiceReceive');
 
 module.exports = Discord;

@@ -113,7 +113,9 @@ describe('Discord', function () {
     it('commits voice session transitions immediately and defers flag toggles', async function () {
       const discord = new Discord();
       let commits = 0;
+      const voices = [];
       discord.commit = async function () { commits += 1; };
+      discord.on('voice', (event) => voices.push(event));
       const guild = { id: 'g1', channels: { cache: { get: () => ({ name: 'A' }) } } };
       const none = { id: 'u1', channelId: null, guild };
       const inChannel = {
@@ -122,13 +124,25 @@ describe('Discord', function () {
         guild,
         channel: { name: 'A' },
         selfMute: false,
-        selfDeaf: false
+        selfDeaf: false,
+        streaming: false,
+        selfVideo: false
       };
       await discord._handleVoiceStateUpdate(none, inChannel);
       assert.strictEqual(commits, 1);
-      await discord._handleVoiceStateUpdate(inChannel, { ...inChannel, selfMute: true });
+      assert.strictEqual(voices[0].kind, 'session');
+      assert.strictEqual(voices[0].flags.streaming, false);
+      assert.strictEqual(voices[0].flags.selfVideo, false);
+      assert.strictEqual(voices[0].flags.selfMute, false);
+      await discord._handleVoiceStateUpdate(inChannel, { ...inChannel, selfMute: true, streaming: true, selfVideo: true });
       assert.strictEqual(commits, 1);
       assert.ok(discord._voiceCommitTimer);
+      assert.strictEqual(voices[1].kind, 'flags');
+      assert.strictEqual(voices[1].flags.streaming, true);
+      assert.strictEqual(voices[1].flags.selfVideo, true);
+      assert.strictEqual(voices[1].flags.selfMute, true);
+      assert.strictEqual(voices[1].oldFlags.streaming, false);
+      assert.strictEqual(voices[1].oldFlags.selfMute, false);
       await discord._flushVoiceCommit();
       assert.strictEqual(commits, 2);
       assert.strictEqual(discord._voiceCommitTimer, null);
