@@ -61,6 +61,27 @@ function ensureContentMaps (content) {
 }
 
 /**
+ * Merge an observation over a stored row. A display name copied from the
+ * username (`displayNameInferred`) follows later usernames; one Discord
+ * supplied is kept until another replaces it.
+ * @param {object|null} prev
+ * @param {object} clean
+ * @returns {object}
+ * @private
+ */
+function mergeRow (prev, clean) {
+  const row = Object.assign({}, prev || {}, clean);
+  const kept = !!(prev && prev.displayName && prev.displayNameInferred !== true);
+  if (clean.displayName || kept) {
+    delete row.displayNameInferred;
+  } else if (row.username != null && (!row.displayName || row.displayNameInferred)) {
+    row.displayName = String(row.username);
+    row.displayNameInferred = true;
+  }
+  return row;
+}
+
+/**
  * @param {Array|object|undefined} prevList
  * @param {Array|undefined} incomingList
  * @param {Function} sanitize
@@ -83,7 +104,7 @@ function mergeById (prevList, incomingList, sanitize, cap) {
     if (!clean || !clean.id) continue;
     const id = String(clean.id);
     const prev = byId.get(id);
-    byId.set(id, prev ? Object.assign({}, prev, clean) : clean);
+    byId.set(id, mergeRow(prev, clean));
   }
   let out = Array.from(byId.values());
   if (Number.isFinite(cap) && out.length > cap) {
@@ -132,17 +153,24 @@ function sanitizeChannelRow (channel) {
  * @returns {object|null}
  */
 function sanitizeMemberRow (member, seenAt) {
-  const row = (member && member.username != null && member.id != null)
-    ? {
+  let row = null;
+  if (member && member.username != null && member.id != null) {
+    // Partial observations (chat authors) must not blank fields a fuller snapshot stored;
+    // a snapshot that names `avatar: null` or `globalName: null` clears it.
+    row = {
       id: String(member.id),
       username: String(member.username),
-      displayName: String(member.displayName || member.username),
-      bot: member.bot === true,
-      status: member.status != null ? String(member.status) : null,
-      avatar: member.avatar != null ? String(member.avatar) : null,
-      roles: Array.isArray(member.roles) ? member.roles.map(String) : undefined
-    }
-    : serializeMember(member);
+      bot: member.bot === true
+    };
+    if (member.displayName && member.displayNameInferred !== true) row.displayName = String(member.displayName);
+    if (member.displayNameInferred === true) row.displayNameInferred = true;
+    if (Object.prototype.hasOwnProperty.call(member, 'globalName')) row.globalName = member.globalName != null ? String(member.globalName) : null;
+    if (member.status != null) row.status = String(member.status);
+    if (Object.prototype.hasOwnProperty.call(member, 'avatar')) row.avatar = member.avatar != null ? String(member.avatar) : null;
+    if (Array.isArray(member.roles)) row.roles = member.roles.map(String);
+  } else {
+    row = serializeMember(member);
+  }
   if (!row) return null;
   row.seenAt = isoNow((member && member.seenAt) || seenAt);
   return row;
@@ -195,13 +223,34 @@ function foldGuild (content, incoming, opts = {}) {
     observedAt
   };
   maps.guilds[id] = row;
-  for (const ch of channels) {
-    if (!ch || !ch.id) continue;
-    foldChannel(maps, Object.assign({}, ch, { guildId: id }), { observedAt, skipGuild: true });
-  }
-  for (const m of members) {
-    if (!m || !m.id) continue;
-    foldUser(maps, m, { observedAt });
+  // A stored null global name may predate one another guild's snapshot gave the user;
+  // only a snapshot that names `globalName: null` clears the user's.
+  const named = new Set((snap.members || [])
+    .filter((m) => m && m.id != null && Object.prototype.hasOwnProperty.call(m, 'globalName'))
+    .map((m) => String(m.id)));
+  const userRow = (m) => {
+    if (m.globalName != null || named.has(String(m.id))) return m;
+    const rest = Object.assign({}, m);
+    delete rest.globalName;
+    return rest;
+  };
+  if (!opts.observedOnly) {
+    for (const ch of channels) {
+      if (!ch || !ch.id) continue;
+      foldChannel(maps, Object.assign({}, ch, { guildId: id }), { observedAt, skipGuild: true, skipPrune: true });
+    }
+    for (const m of members) {
+      if (!m || !m.id) continue;
+      foldUser(maps, userRow(m), { observedAt, skipPrune: true });
+    }
+    pruneMap(maps.channels, STORE_CHANNEL_CAP, (c) => c && c.updatedAt);
+    pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
+  } else {
+    // The user map may have evicted an observed member the guild still holds in full.
+    const observed = new Set((snap.members || []).map((m) => m && m.id != null && String(m.id)).filter(Boolean));
+    for (const m of members) {
+      if (m && observed.has(String(m.id))) foldUser(maps, userRow(m), { observedAt });
+    }
   }
   pruneMap(maps.guilds, STORE_GUILD_CAP, (g) => g && (g.updatedAt || g.observedAt));
   return row;
@@ -247,7 +296,7 @@ function foldChannel (content, incoming, opts = {}) {
     row.members = prev.members;
   }
   maps.channels[id] = row;
-  pruneMap(maps.channels, STORE_CHANNEL_CAP, (c) => c && c.updatedAt);
+  if (!opts.skipPrune) pruneMap(maps.channels, STORE_CHANNEL_CAP, (c) => c && c.updatedAt);
   if (!opts.skipGuild && guildId && maps.guilds[guildId]) {
     const g = maps.guilds[guildId];
     g.channels = mergeById(g.channels || [], [row], (ch) => sanitizeChannelRow(ch), STORE_CHANNEL_CAP);
@@ -268,9 +317,9 @@ function foldUser (content, incoming, opts = {}) {
   if (!snap || !snap.id) return null;
   const id = String(snap.id);
   const prev = maps.users[id] || null;
-  const row = prev ? Object.assign({}, prev, snap) : snap;
+  const row = mergeRow(prev, snap);
   maps.users[id] = row;
-  pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
+  if (!opts.skipPrune) pruneMap(maps.users, STORE_USER_CAP, (u) => u && u.seenAt);
   return row;
 }
 
@@ -301,7 +350,6 @@ function foldMessageObservation (content, obs) {
     ? {
       id: obs.authorId,
       username: obs.authorUsername || obs.authorId,
-      displayName: obs.authorUsername || obs.authorId,
       bot: !!obs.bot
     }
     : null);
@@ -320,7 +368,7 @@ function foldMessageObservation (content, obs) {
       : [],
     members: member ? [member] : [],
     memberCount: 0
-  }, { observedAt, memberLimit: STORE_MEMBER_CAP });
+  }, { observedAt, memberLimit: STORE_MEMBER_CAP, observedOnly: true });
 }
 
 /**

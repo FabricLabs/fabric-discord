@@ -5,12 +5,13 @@ const crypto = require('crypto');
 const fetch = require('cross-fetch');
 const merge = require('lodash.merge');
 const qs = require('querystring');
-const { Client, GatewayIntentBits, SlashCommandBuilder, ChannelType } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials, SlashCommandBuilder, ChannelType } = require('discord.js');
 
 /** @private */
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 /** @private */
 const OAUTH_STATE_MAX = 64;
+const SYNC_COMMAND_COOLDOWN_MS = 60 * 1000;
 
 
 // Fabric Types
@@ -39,6 +40,7 @@ const {
   foldCatalog,
   catalogFromContent
 } = require('../functions/discordStateAccumulate');
+const messageText = require('../functions/messageText');
 
 /**
  * Map discord.js v14 numeric ChannelType values to the legacy string activity
@@ -64,6 +66,59 @@ function legacyActivityChannelType (channelType) {
     default:
       return channelType;
   }
+}
+
+/** Gateway intents used when `settings.intents` is not given; none is privileged. */
+const DEFAULT_INTENTS = Object.freeze([
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.GuildMessageReactions,
+  GatewayIntentBits.DirectMessages,
+  GatewayIntentBits.DirectMessageReactions,
+  GatewayIntentBits.GuildVoiceStates
+]);
+
+/** Intents Discord grants only when the bot owner enables them. */
+const PRIVILEGED_INTENTS = Object.freeze([
+  GatewayIntentBits.GuildMembers,
+  GatewayIntentBits.GuildPresences,
+  GatewayIntentBits.MessageContent
+]);
+
+/**
+ * Mentions a send may ping when the payload names none: nobody. User text
+ * relayed through the bot can't ping @everyone, a role, or a member unless the
+ * caller passes `allowedMentions` on that payload.
+ */
+const DEFAULT_ALLOWED_MENTIONS = Object.freeze({ parse: [], repliedUser: false });
+
+/**
+ * discord.js `GatewayIntentBits` for a settings list of names (`'Guilds'`) or values.
+ * Unknown entries are dropped.
+ * @param {Array<string|number>} list
+ * @returns {number[]}
+ */
+function intentsFrom (list) {
+  if (!Array.isArray(list)) return [];
+  const values = list
+    .map((entry) => (typeof entry === 'number' ? entry : GatewayIntentBits[entry]))
+    .filter((value) => typeof value === 'number' && Object.values(GatewayIntentBits).includes(value));
+  return Array.from(new Set(values));
+}
+
+/**
+ * discord.js `Partials` for a settings list of names (`'Channel'`) or values.
+ * Unknown entries are dropped.
+ * @param {Array<string|number>} list
+ * @returns {number[]}
+ */
+function partialsFrom (list) {
+  if (!Array.isArray(list)) return [];
+  const values = list
+    .map((entry) => (typeof entry === 'number' ? entry : Partials[entry]))
+    // `Partials['0']` is the reverse-mapped name 'User'; only the numeric values are partials.
+    .filter((value) => typeof value === 'number' && Object.values(Partials).includes(value));
+  return Array.from(new Set(values));
 }
 
 /**
@@ -99,24 +154,25 @@ class Discord extends Service {
         'guilds',
         'guilds.join'
       ],
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageReactions,
-        GatewayIntentBits.DirectMessageTyping,
-        GatewayIntentBits.GuildMessageTyping,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.MessageContent
-      ],
+      // Non-privileged by default. GuildMembers, GuildPresences, and
+      // MessageContent must be asked for (and enabled in the Developer Portal).
+      intents: DEFAULT_INTENTS.slice(),
       /**
        * When false, skip local !ping/!help/!status/!sync replies so a Fabric
        * consumer can claim DiscordRequest frames without multi-bot collisions.
        */
       autoCommands: true,
+      /**
+       * Other bots whose messages are emitted as `bot` events: `false` (none),
+       * `true` (every bot but this one), or a list of bot user ids. Reading
+       * them in servers needs the MessageContent intent.
+       */
+      bots: false,
+      /**
+       * When false, people's messages are neither emitted as `activity` nor
+       * folded into the catalog (for consumers that only read `bots`).
+       */
+      messages: true,
       secure: false,
       state: {
         channels: {},
@@ -136,6 +192,8 @@ class Discord extends Service {
     if (Array.isArray(settings.intents)) this.settings.intents = settings.intents.slice();
     if (Array.isArray(settings.scopes)) this.settings.scopes = settings.scopes.slice();
     if (Array.isArray(settings.alerts)) this.settings.alerts = settings.alerts.slice();
+    if (Array.isArray(settings.partials)) this.settings.partials = settings.partials.slice();
+    if (Array.isArray(settings.bots)) this.settings.bots = settings.bots.map(String);
     if (this.settings.token != null) {
       const trimmed = String(this.settings.token).trim();
       this.settings.token = trimmed || null;
@@ -170,7 +228,12 @@ class Discord extends Service {
         this.emit('error', err);
       });
     };
-    this._onClientMessage = this._handleClientMessage.bind(this);
+    this._onClientMessage = (message) => {
+      this._handleClientMessage(message).catch((err) => {
+        this.emit('error', err);
+      });
+    };
+    this._lastCommandSyncAt = 0;
     this._onClientReady = this._onClientReady.bind(this);
     this._clientDestroyed = false;
     this._voiceCommitTimer = null;
@@ -277,15 +340,40 @@ class Discord extends Service {
     return this.postToChannel(channelId, msg);
   }
 
+  /**
+   * Direct message one user. Accepts a string or a discord.js message payload.
+   * discord.js errors pass through unchanged (code 50007: the user does not
+   * accept DMs from this bot), so callers can tell the person.
+   * @param {string} userID
+   * @param {string|object} msg
+   * @returns {Promise<object>} The sent message.
+   */
+  async sendDirect (userID, msg) {
+    const id = String(userID || '').trim();
+    if (!id) throw new Error('Discord user id required');
+    if (!this.client || !this.client.isReady || !this.client.isReady()) {
+      throw new Error('Discord client is not ready');
+    }
+    const user = await this.client.users.fetch(id);
+    const payload = (typeof msg === 'string')
+      ? { content: msg }
+      : (msg && typeof msg === 'object' ? msg : { content: String(msg) });
+    return user.send(payload);
+  }
+
   _createClient () {
-    return new Client({
-      intents: Array.isArray(this.settings.intents) ? this.settings.intents : []
-    });
+    const options = {
+      intents: intentsFrom(this.settings.intents),
+      allowedMentions: Object.assign({}, DEFAULT_ALLOWED_MENTIONS, { parse: [] })
+    };
+    const partials = partialsFrom(this.settings.partials);
+    if (partials.length) options.partials = partials;
+    return new Client(options);
   }
 
   _attachClientListeners () {
     this.client.on('error', this._onClientError);
-    this.client.once('ready', this._onClientReady);
+    this.client.once(Events.ClientReady, this._onClientReady);
     this.client.on('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.on('messageCreate', this._onClientMessage);
   }
@@ -293,7 +381,7 @@ class Discord extends Service {
   _detachClientListeners () {
     if (!this.client) return;
     this.client.removeListener('error', this._onClientError);
-    this.client.removeListener('ready', this._onClientReady);
+    this.client.removeListener(Events.ClientReady, this._onClientReady);
     this.client.removeListener('voiceStateUpdate', this._onVoiceStateUpdate);
     this.client.removeListener('messageCreate', this._onClientMessage);
   }
@@ -368,8 +456,39 @@ class Discord extends Service {
     return this;
   }
 
+  _watchesBot (authorId) {
+    const bots = this.settings.bots;
+    const self = this.client && this.client.user ? String(this.client.user.id) : null;
+    if (!bots || !authorId || authorId === self) return false;
+    return bots === true || (Array.isArray(bots) && bots.includes(authorId));
+  }
+
+  /**
+   * A message from a watched bot (`settings.bots`): emit `bot` with what a
+   * reader sees in it. Never folded into the catalog or answered.
+   * @param {Object} message discord.js Message
+   * @private
+   */
+  _handleBotMessage (message) {
+    const authorId = message.author && message.author.id != null ? String(message.author.id) : null;
+    if (!this._watchesBot(authorId)) return;
+    const member = message.member;
+    this.emit('bot', {
+      id: message.id != null ? String(message.id) : null,
+      guildId: message.guildId != null ? String(message.guildId) : null,
+      channelId: message.channelId != null
+        ? String(message.channelId)
+        : (message.channel && message.channel.id != null ? String(message.channel.id) : null),
+      authorId,
+      authorName: (member && (member.nickname || member.displayName)) || message.author.globalName || message.author.username || null,
+      created: positiveCreatedMs(message.createdTimestamp),
+      lines: messageText(message)
+    });
+  }
+
   async _handleClientMessage (message) {
-    if (message.author.bot) return; // ignore bots
+    if (message.author.bot) return this._handleBotMessage(message);
+    if (this.settings.messages === false) return;
 
     const now = (new Date()).toISOString();
     const isDm = message.channel.type === ChannelType.DM;
@@ -425,6 +544,7 @@ class Discord extends Service {
       target: {
         id: target.id,
         name: message.channel.name, // is undefined in case of DM
+        guildId: message.guildId || null,
         type: targetType,
         ref: message.channel.id // TODO: change name to "upstream ID" (UID)?
       }
@@ -446,6 +566,11 @@ class Discord extends Service {
     }
 
     if (message.content === '!sync') {
+      const at = Date.now();
+      if (at - this._lastCommandSyncAt < SYNC_COMMAND_COOLDOWN_MS) {
+        return message.channel.send('Synced recently; try again later.');
+      }
+      this._lastCommandSyncAt = at;
       await this.sync();
       return message.channel.send('Synced.');
     }
@@ -562,7 +687,9 @@ class Discord extends Service {
       oldChannelId: oldSlice.channelId,
       newChannelId: newSlice.channelId,
       kind: result.kind,
-      channelName
+      channelName,
+      flags: newSlice.flags,
+      oldFlags: oldSlice.flags
     });
 
     // Session join/leave/move persists immediately. Mute/deafen/stream flags
@@ -650,6 +777,51 @@ class Discord extends Service {
       botId: id.botUserId,
       fetchedAt: Date.now()
     };
+  }
+
+  /**
+   * Join a voice channel receive-only (muted, not deaf). Fills
+   * `adapterCreator` from the guild cache. Apps mix and persist; this
+   * package owns the join. Does not capture Go Live / screenshare RTP.
+   * @param {Object} input
+   * @param {string} input.guildId
+   * @param {string} input.channelId
+   * @param {Function} [input.adapterCreator]
+   * @param {number} [input.timeoutMs]
+   * @returns {Promise<Object>}
+   */
+  async joinVoiceReceive (input = {}) {
+    const guildId = String(input.guildId || '');
+    const channelId = String(input.channelId || '');
+    const cache = this.client && this.client.guilds && this.client.guilds.cache;
+    const guild = cache && typeof cache.get === 'function' ? cache.get(guildId) : null;
+    const adapterCreator = typeof input.adapterCreator === 'function'
+      ? input.adapterCreator
+      : (guild && guild.voiceAdapterCreator);
+    return this.constructor.voiceReceive.joinVoiceReceive({
+      guildId,
+      channelId,
+      adapterCreator,
+      timeoutMs: input.timeoutMs
+    });
+  }
+
+  /**
+   * Subscribe to one speaker as s16le stereo PCM at 48 kHz.
+   * @param {Object} connection
+   * @param {string} userId
+   * @returns {stream.Readable}
+   */
+  subscribeVoiceReceive (connection, userId) {
+    return this.constructor.voiceReceive.subscribeVoiceReceive(connection, userId);
+  }
+
+  /**
+   * Destroy a receive connection. Safe when `connection` is missing.
+   * @param {Object} [connection]
+   */
+  leaveVoiceReceive (connection) {
+    return this.constructor.voiceReceive.leaveVoiceReceive(connection);
   }
 
   /**
@@ -944,8 +1116,14 @@ class Discord extends Service {
 }
 
 Discord.legacyActivityChannelType = legacyActivityChannelType;
+Discord.partialsFrom = partialsFrom;
+Discord.intentsFrom = intentsFrom;
+Discord.DEFAULT_INTENTS = DEFAULT_INTENTS;
+Discord.PRIVILEGED_INTENTS = PRIVILEGED_INTENTS;
+Discord.DEFAULT_ALLOWED_MENTIONS = DEFAULT_ALLOWED_MENTIONS;
 Discord.positiveCreatedMs = positiveCreatedMs;
 Discord.catalog = require('../functions/discordCatalog');
 Discord.stateAccumulate = require('../functions/discordStateAccumulate');
+Discord.voiceReceive = require('../functions/voiceReceive');
 
 module.exports = Discord;

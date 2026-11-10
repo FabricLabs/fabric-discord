@@ -66,7 +66,7 @@ describe('metrics pipeline', function () {
 
   beforeEach(async function () {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fabric-discord-metrics-'));
-    store = new Store({ name: 'metrics-test', path: dir, persistent: true });
+    store = new Store({ name: 'metrics-test', path: dir, persistent: true, strict: true });
     await store.start();
     clock = T0;
     source = new EventEmitter();
@@ -102,6 +102,20 @@ describe('metrics pipeline', function () {
     assert.ok(!bits.includes(GatewayIntentBits.GuildMembers));
   });
 
+  it('retains all day buckets by default and prunes only when retentionDays is set', function () {
+    const DAY = 24 * HOUR;
+    const old = dayKey(T0 - 400 * DAY);
+    for (const factory of [voiceActivity, messageActivity]) {
+      for (const [options, kept] of [[{}, true], [{ retentionDays: 90 }, false]]) {
+        const plugin = factory(options);
+        const state = Object.assign(plugin.init(), { operations: { alpha: { days: { [old]: {}, [dayKey(T0)]: {} } } } });
+        plugin.on.tick({}, { state, now: T0 });
+        assert.strictEqual(old in state.operations.alpha.days, kept, `${plugin.name} ${JSON.stringify(options)}`);
+        assert.ok(dayKey(T0) in state.operations.alpha.days);
+      }
+    }
+  });
+
   it('credits voice time, sessions, members, and peak per operation', async function () {
     const p = await pipeline();
     voice('u1', null, ALPHA_VOICE, 'ALPHA SQUADRON');
@@ -135,7 +149,7 @@ describe('metrics pipeline', function () {
       type: 'DiscordMessage',
       actor: { ref: author },
       object: { content },
-      target: { ref: channel, name: 'alpha-squadron' }
+      target: { ref: channel, name: 'alpha-squadron', guildId: GUILD }
     });
     message('u1', ALPHA_TEXT, 'secret plans');
     message('u1', ALPHA_TEXT, 'more');
@@ -152,6 +166,55 @@ describe('metrics pipeline', function () {
 
     const saved = await store.get(MetricsPipeline.STORE_PREFIX + 'messages');
     assert.ok(!JSON.stringify(saved).includes('secret plans'));
+    await p.stop();
+  });
+
+  it('never credits a guild-scoped operation from a channel on another server', async function () {
+    const p = await pipeline();
+    for (const guildId of ['999', undefined]) {
+      source.emit('activity', {
+        type: 'DiscordMessage',
+        actor: { ref: 'u9' },
+        object: { content: 'x' },
+        target: { ref: ALPHA_TEXT, name: 'alpha-squadron', guildId }
+      });
+    }
+    await p.flush();
+    const report = await p.report();
+    const alpha = report.operations.find((op) => op.id === 'alpha-squadron').metrics;
+    assert.strictEqual(alpha.messages.last7Days.messages, 0);
+    await p.stop();
+  });
+
+  it('a failed Store read stops start; a failed write stays dirty for the next flush', async function () {
+    const failing = Object.assign(Object.create(store), {
+      settings: Object.assign({}, store.settings),
+      get: async () => { throw new Error('read failed'); }
+    });
+    const p = new MetricsPipeline({ store: failing, plugins: [voiceActivity()], tickMs: 0 });
+    await assert.rejects(() => p.start(), /read failed/);
+
+    const q = await pipeline();
+    q.on('error', () => {});
+    const set = store.set;
+    store.set = async () => { throw new Error('write failed'); };
+    voice('u1', null, ALPHA_VOICE, 'ALPHA SQUADRON');
+    await q.dispatch('noop');
+    await assert.rejects(() => q.flush(), /write failed/);
+    assert.ok(q._dirty.has('voice'));
+    store.set = set;
+    await q.flush();
+    assert.strictEqual(q._dirty.size, 0);
+    await q.stop();
+  });
+
+  it('warns when the Store is not strict', async function () {
+    const lax = Object.assign(Object.create(store), { settings: Object.assign({}, store.settings, { strict: false }) });
+    const p = new MetricsPipeline({ store: lax, plugins: [voiceActivity()], tickMs: 0 });
+    const warnings = [];
+    p.on('warning', (w) => warnings.push(w));
+    await p.start();
+    assert.strictEqual(warnings.length, 1);
     await p.stop();
   });
 
