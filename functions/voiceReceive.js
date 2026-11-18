@@ -54,8 +54,20 @@ async function joinVoiceReceive (input = {}, deps = {}) {
     selfMute: true
   });
   const timeoutMs = Number(input.timeoutMs) > 0 ? Number(input.timeoutMs) : 20000;
-  await voice.entersState(connection, voice.VoiceConnectionStatus.Ready, timeoutMs);
-  return connection;
+  try {
+    await voice.entersState(connection, voice.VoiceConnectionStatus.Ready, timeoutMs);
+    return connection;
+  } catch (error) {
+    try {
+      const status = connection && connection.state && connection.state.status;
+      const ready = voice.VoiceConnectionStatus && voice.VoiceConnectionStatus.Ready;
+      const destroyed = voice.VoiceConnectionStatus && voice.VoiceConnectionStatus.Destroyed;
+      if (status && status !== ready && status !== destroyed && typeof connection.destroy === 'function') {
+        connection.destroy();
+      }
+    } catch (_) { /* keep the original rejection */ }
+    throw error;
+  }
 }
 
 /**

@@ -49,6 +49,23 @@ describe('voiceReceive', function () {
     });
   });
 
+  it('destroys a connection that never becomes ready, and keeps the original error', async function () {
+    const connection = {
+      state: { status: 'signalling' },
+      destroy () { this.state.status = 'destroyed'; this.gone = true; }
+    };
+    const voice = {
+      VoiceConnectionStatus: { Ready: 'ready', Destroyed: 'destroyed' },
+      joinVoiceChannel () { return connection; },
+      async entersState () { throw new Error('Ready timed out'); }
+    };
+    await assert.rejects(
+      () => joinVoiceReceive({ channelId: 'c1', guildId: 'g1', adapterCreator: () => {} }, { voice }),
+      /Ready timed out/
+    );
+    assert.strictEqual(connection.gone, true);
+  });
+
   it('refuses a join without a channel or adapter', async function () {
     await assert.rejects(() => joinVoiceReceive({}), /Need a voice channel/);
     await assert.rejects(
