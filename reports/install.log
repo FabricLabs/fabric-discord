@@ -1,6 +1,6 @@
 $ npm i --allow-git=all
 
-added 213 packages, and audited 214 packages in 16s
+added 213 packages, and audited 214 packages in 13s
 
 49 packages are looking for funding
   run `npm fund` for details
