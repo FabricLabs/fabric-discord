@@ -93,6 +93,13 @@ function subscribeVoiceReceive (connection, userId, deps = {}) {
     end: { behavior: voice.EndBehaviorType.AfterSilence, duration: silenceMs }
   });
   const decoder = new prism.opus.Decoder({ frameSize: 960, channels: CHANNELS, rate: SAMPLE_RATE });
+  opus.on('error', (error) => {
+    if (!decoder.destroyed) decoder.destroy(error);
+  });
+  const release = () => {
+    if (typeof opus.destroy === 'function' && !opus.destroyed) opus.destroy();
+  };
+  decoder.on('close', release);
   return opus.pipe(decoder);
 }
 

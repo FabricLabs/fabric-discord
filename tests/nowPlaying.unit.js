@@ -63,6 +63,9 @@ describe('parseNowPlaying', function () {
     assert.deepStrictEqual(
       parseNowPlaying(['<@420222636954615808> | It\'s sad to say goodbye, I\'ve stopped playing music and left the voice channel. :frowning:']),
       { type: 'stopped', bot: 'tempo' });
+    const titled = parseNowPlaying(messageText(tempoCard('I\'ve stopped playing music and left the voice channel by Example')));
+    assert.strictEqual(titled.type, 'playing');
+    assert.strictEqual(titled.title, 'I\'ve stopped playing music and left the voice channel');
     assert.strictEqual(parseNowPlaying(['<@1> | Added `Let It Be` by `The Beatles` to position `6` in the queue (playing <t:1794267619:R>.)']), null);
     assert.strictEqual(parseNowPlaying(['I couldn\'t load **Back In Black** by **AC/DC**. If this keeps happening then please contact us.']), null);
     assert.strictEqual(parseNowPlaying([]), null);

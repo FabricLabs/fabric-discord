@@ -102,6 +102,42 @@ describe('voiceReceive', function () {
     });
   });
 
+  it('forwards an opus error to the decoder and releases the source', function (done) {
+    const opus = new PassThrough();
+    let released = false;
+    const destroy = opus.destroy.bind(opus);
+    opus.destroy = (...args) => {
+      released = true;
+      return destroy(...args);
+    };
+    class Decoder extends PassThrough {
+      constructor (opts) {
+        super();
+        this.opts = opts;
+      }
+    }
+    const connection = {
+      receiver: {
+        subscribe () { return opus; }
+      }
+    };
+    const voice = { EndBehaviorType: { AfterSilence: 'silence' } };
+    const prism = { opus: { Decoder } };
+    const stream = subscribeVoiceReceive(connection, 'u1', { voice, prism });
+    let forwarded = null;
+    stream.on('error', (error) => { forwarded = error; });
+    stream.on('close', () => {
+      try {
+        assert.strictEqual(forwarded && forwarded.message, 'decrypt failed');
+        assert.strictEqual(released, true);
+        done();
+      } catch (assertion) {
+        done(assertion);
+      }
+    });
+    opus.emit('error', new Error('decrypt failed'));
+  });
+
   it('leaves by destroying the connection, and is safe when missing', function () {
     const connection = { destroy () { this.gone = true; } };
     leaveVoiceReceive(connection);

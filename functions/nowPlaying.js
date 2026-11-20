@@ -36,7 +36,7 @@ function titleAndArtist (text) {
  * @private
  */
 function tempo (lines) {
-  if (lines.some((line) => /I've stopped playing music and left the voice channel/.test(line))) {
+  if (lines.some((line) => /^<@!?\d{5,25}> \| It's sad to say goodbye, I've stopped playing music and left the voice channel/.test(line))) {
     return { type: 'stopped', bot: 'tempo' };
   }
   let playing = null;
