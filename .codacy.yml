@@ -8,3 +8,4 @@ exclude_paths:
   - "package-lock.json"
   - "SECURITY.md"
   - "AUDIT.md"
+  - "AGENTS.md"

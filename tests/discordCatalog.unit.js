@@ -40,7 +40,12 @@ describe('discordCatalog', function () {
       displayName: 'Pilot'
     });
     assert.strictEqual(m.displayName, 'Pilot');
+    assert.strictEqual(m.globalName, null, 'a server nickname is not the global name');
     assert.strictEqual(m.bot, false);
+    assert.strictEqual(serializeMember({ id: 'u3', nickname: 'Nick', displayName: 'Nick', user: { id: 'u3', username: 'n', globalName: 'Global' } }).globalName, 'Global');
+    const content = {};
+    foldGuild(content, { id: 'g1', channels: [], members: [serializeMember({ id: 'u3', user: { id: 'u3', username: 'n', globalName: 'Global' } })] });
+    assert.strictEqual(content.users.u3.globalName, 'Global');
     const guilds = [
       { members: [m, { id: 'u2', username: 'a', displayName: 'a', bot: true }] },
       { members: [{ id: 'u1', username: 'pilot', displayName: 'Pilot', bot: false }] }
@@ -207,10 +212,88 @@ describe('discordStateAccumulate', function () {
     assert.strictEqual(content.channels.c1.members.length, 1);
   });
 
+  it('an inferred display name follows the username; a Discord display name stays', function () {
+    const content = {};
+    foldMessageObservation(content, { authorId: 'u1', authorUsername: 'old' });
+    assert.strictEqual(content.users.u1.displayName, 'old');
+    foldMessageObservation(content, { authorId: 'u1', authorUsername: 'new' });
+    assert.strictEqual(content.users.u1.displayName, 'new');
+    foldUser(content, { id: 'u1', username: 'new', displayName: 'Nick' });
+    foldMessageObservation(content, { authorId: 'u1', authorUsername: 'newer' });
+    assert.strictEqual(content.users.u1.displayName, 'Nick');
+    assert.strictEqual(content.users.u1.username, 'newer');
+  });
+
+  it('a guild message keeps a Discord display name the user row got after an inferred one', function () {
+    const content = {};
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace' });
+    assert.strictEqual(content.guilds.g1.members[0].displayNameInferred, true);
+    foldUser(content, { id: 'u1', username: 'ace', displayName: 'Ace Pilot' });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace' });
+    assert.strictEqual(content.users.u1.displayName, 'Ace Pilot');
+    assert.strictEqual(content.users.u1.displayNameInferred, undefined);
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'ace2' });
+    assert.strictEqual(content.users.u1.displayName, 'Ace Pilot');
+    assert.strictEqual(content.users.u1.username, 'ace2');
+    assert.strictEqual(content.guilds.g1.members[0].displayName, 'ace2', 'the guild row stays inferred');
+  });
+
+  it('a full snapshot with globalName: null clears a stored global name; a chat author does not', function () {
+    const content = {};
+    const member = (globalName) => serializeMember({ id: 'u1', user: { id: 'u1', username: 'a', globalName } });
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [member('Global')] });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.globalName, 'Global');
+    assert.strictEqual(content.guilds.g1.members[0].globalName, 'Global');
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [member(null)] });
+    assert.strictEqual(content.users.u1.globalName, null);
+    assert.strictEqual(content.guilds.g1.members[0].globalName, null);
+    foldGuild(content, { id: 'g2', name: 'H', channels: [], members: [member('Later')] });
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.globalName, 'Later', "g1's stored null does not clear a newer global name");
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [{ id: 'u2', username: 'b' }] });
+    assert.strictEqual(content.users.u1.globalName, 'Later', 'a snapshot that omits u1 does not clear it either');
+  });
+
+  it('a full snapshot with avatar: null clears a stored avatar; a chat author does not', function () {
+    const content = {};
+    const guild = (avatar) => ({ id: 'g1', name: 'G', channels: [], members: [{ id: 'u1', username: 'a', displayName: 'A', bot: false, status: null, avatar }] });
+    foldGuild(content, guild('av'));
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.avatar, 'av');
+    assert.strictEqual(content.guilds.g1.members[0].avatar, 'av');
+    foldGuild(content, guild(null));
+    assert.strictEqual(content.users.u1.avatar, null);
+    assert.strictEqual(content.guilds.g1.members[0].avatar, null);
+  });
+
+  it('a chat author the user map evicted gets the guild member back', function () {
+    const content = {};
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [{ id: 'u1', username: 'a', displayName: 'Ace', bot: false, status: 'online', avatar: 'av', roles: ['r1'] }] });
+    delete content.users.u1;
+    foldMessageObservation(content, { guildId: 'g1', authorId: 'u1', authorUsername: 'a' });
+    assert.strictEqual(content.users.u1.displayName, 'Ace');
+    assert.strictEqual(content.users.u1.avatar, 'av');
+    assert.deepStrictEqual(content.users.u1.roles, ['r1']);
+  });
+
   it('foldUser merges into content.users', function () {
     const content = ensureContentMaps({});
     foldUser(content, { id: 'u1', username: 'a', displayName: 'A', bot: false });
     foldUser(content, { id: 'u1', username: 'a', displayName: 'Ace', bot: false });
     assert.strictEqual(content.users.u1.displayName, 'Ace');
+  });
+
+  it('message observations keep stored nickname, roles, avatar, and status', function () {
+    const content = {};
+    const rich = { id: 'u1', username: 'ace', displayName: 'Ace Pilot', bot: false, status: 'online', avatar: 'av', roles: ['r1'] };
+    foldGuild(content, { id: 'g1', name: 'G', channels: [], members: [rich], memberCount: 1 });
+    foldMessageObservation(content, { guildId: 'g1', channelId: 'c1', authorId: 'u1', authorUsername: 'ace' });
+    for (const row of [content.users.u1, content.guilds.g1.members.find((m) => m.id === 'u1')]) {
+      assert.strictEqual(row.displayName, 'Ace Pilot');
+      assert.deepStrictEqual(row.roles, ['r1']);
+      assert.strictEqual(row.avatar, 'av');
+      assert.strictEqual(row.status, 'online');
+    }
   });
 });

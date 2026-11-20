@@ -10,7 +10,7 @@ Re-pin after Wave 1 core honesty lands on a new tip.
 2. Discord is a **third-party exfil** — mirrored chat is non-private. Never commit bot tokens / webhook URLs.
 
 ## Next slices
-- [ ] discord.js 14.18 is a deprecated line — coordinated consumer bump later (GoonCitizen).
+- [x] discord.js 14.27.0 (2026-10-24): clears the pinned `undici@6.21.1` advisories; client ready listener moved to `Events.ClientReady`. Consumers refresh their lockfiles.
 - [x] Catalog / state accumulate APIs for Sensemaker + GoonCitizen — `functions/discordCatalog.js`, `functions/discordStateAccumulate.js`; service `buildCatalog` / `toCatalog` / `refreshCaches` / `getVoiceSnapshot` / `listGuildSummaries` / `listUserSummaries`; union-merge sync + message observation fold into `content.users`.
 - [ ] Optional: GoonCitizen re-export / collapse local `discordGuildCatalog` serialize helpers onto `@fabric/discord/functions/discordCatalog` when pin bumps (keep bot permission chips local).
 - [ ] Optional: Sensemaker HTTP routes prefer `discord.listGuildSummaries()` / `getVoiceSnapshot()` over raw `client.*.cache`.
@@ -23,7 +23,7 @@ Re-pin after Wave 1 core honesty lands on a new tip.
 - Constructor trims blank `channel` / `app.id` / `app.secret` like `token`.
 - Package export `./functions/voiceChannelStats` for consumers that already require the leaf.
 - OAuth CSRF `state`: `generateAuthorizeLink` emits a one-time 64-hex token (TTL 10m, cap 64). Missing/unknown/replayed state is 400. Callback still 501 (no code exchange).
-- `@fabric/core` lockfile tracks `#feature/rsi` (see lockfile SHA). `report:install` removes `package-lock.json` then `npm i --allow-git=all`.
+- `@fabric/core` lockfile tracks `#feature/passport` (see lockfile SHA). `report:install` removes `package-lock.json` then `npm i --allow-git=all`.
 - Voice flag persist: session transitions `commit()` immediately; mute/deafen/stream flags debounce 5s. Unit test flushes the deferred timer (`_flushVoiceCommit`) so the second commit is observed.
 - Activity `target.type` uses legacy `'dm'` / `'text'` / `'news'` strings (discord.js v14 ChannelType numbers).
 - GoonCitizen already requires `@fabric/discord/functions/normalizeDiscordSettings` (local file is a re-export). Hub does not depend on this package.

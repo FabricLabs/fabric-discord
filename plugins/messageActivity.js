@@ -15,11 +15,11 @@ const {
  *
  * State: `{ operations: { <id>: { total, days: { YYYY-MM-DD: { messages, authors } } } } }`
  * @param {Object} [options]
- * @param {number} [options.retentionDays] day buckets kept (default 90)
+ * @param {number} [options.retentionDays] day buckets kept (default: all history)
  * @returns {Object} metrics plugin
  */
 function messageActivity (options = {}) {
-  const retentionDays = options.retentionDays || 90;
+  const retentionDays = options.retentionDays || 0;
 
   return {
     name: 'messages',
@@ -33,7 +33,7 @@ function messageActivity (options = {}) {
     on: {
       activity (event, ctx) {
         if (!event || event.type !== 'DiscordMessage' || !event.target || event.target.ref == null) return false;
-        const hits = ctx.operationsFor({ id: String(event.target.ref), name: event.target.name });
+        const hits = ctx.operationsFor({ id: String(event.target.ref), name: event.target.name, guildId: event.target.guildId });
         if (!hits.length) return false;
         const day = dayKey(ctx.now);
         const author = event.actor && event.actor.ref != null ? String(event.actor.ref) : null;
